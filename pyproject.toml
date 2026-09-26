@@ -24,15 +24,8 @@ dev = [
     "vcrpy>=6",
     "pytest-recording>=0.13",
     "syrupy>=4.7",
-    "authzed>=1.0",
-    "grpcio>=1.66",
-    "psycopg[binary]>=3.2",
 ]
-integration = [
-    "authzed>=1.0",
-    "grpcio>=1.66",
-    "psycopg[binary]>=3.2",
-]
+integration = []
 
 [dependency-groups]
 dev = [
@@ -44,15 +37,8 @@ dev = [
     "vcrpy>=6",
     "pytest-recording>=0.13",
     "syrupy>=4.7",
-    "authzed>=1.0",
-    "grpcio>=1.66",
-    "psycopg[binary]>=3.2",
 ]
-integration = [
-    "authzed>=1.0",
-    "grpcio>=1.66",
-    "psycopg[binary]>=3.2",
-]
+integration = []
 
 [tool.uv]
 package = false
@@ -89,7 +75,6 @@ testpaths = ["packages", "connectors", "tests"]
 pythonpath = [
     "src",
     "packages/aegismind-types/src",
-    "packages/aegismind-authz/src",
     "packages/aegismind-connector-sdk/src",
     "packages/aegismind-infra/src",
     "packages/aegismind-identity/src",
@@ -97,25 +82,9 @@ pythonpath = [
     "packages/aegismind-ingestion/src",
     "packages/aegismind-mcp-bridge/src",
     "packages/aegismind-core/src",
-    "connectors/confluence/src",
-    "connectors/google_drive/src",
-    "connectors/jira/src",
-    "connectors/github/src",
-    "connectors/slack/src",
-    "connectors/notion/src",
-    "connectors/dropbox/src",
-    "connectors/gmail/src",
-    "connectors/linear/src",
-    "connectors/salesforce/src",
-    "connectors/sharepoint/src",
-    "connectors/teams/src",
-    "connectors/zendesk/src",
-    "connectors/granola/src",
-    "connectors/weblink/src",
     "connectors/local_filesystem/src",
 ]
 markers = [
-    "permission: marks tests as permission verification tests",
     "integration: marks tests as integration tests requiring external services",
     "conformance: marks tests as architectural or interface conformance tests",
     "guardrail: marks tests as security or access guardrail tests",
