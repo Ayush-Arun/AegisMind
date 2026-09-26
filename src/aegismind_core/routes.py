@@ -398,22 +398,12 @@ def create_routes(state: CoreState) -> APIRouter:
             trim_notice = budget_res.notice
 
             if surviving_results:
-                primary = surviving_results[0]
-                answer_parts = [
-                    f"Based on verified access-controlled documents for {effective_principal_id}:",
-                    primary.text,
-                ]
-                if len(surviving_results) > 1:
-                    additional_insights = [
-                        f"{r.title}: {r.text}"
-                        for r in surviving_results[1:3]
-                        if r.document_id != primary.document_id
-                    ]
-                    if additional_insights:
-                        answer_parts.append("Additional context: " + " ".join(additional_insights))
-                fallback_answer_text = "\n\n".join(answer_parts)
                 prompt = budget_res.prompt
                 system_prompt = budget_res.system_prompt
+                fallback_answer_text = (
+                    "Could not stream response from local Ollama. Please ensure Ollama is "
+                    "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is available."
+                )
             elif res.total_candidates_evaluated > 0 and res.authorized_candidates_count == 0:
                 fallback_answer_text = (
                     f"Access denied: Relevant candidate documents matched query '{query}', but "
@@ -431,11 +421,11 @@ def create_routes(state: CoreState) -> APIRouter:
                 prompt = f"USER QUESTION:\n{query}"
             else:
                 fallback_answer_text = (
-                    f"No indexed documents found matching query '{query}'. "
-                    f"Please refine your search terms or verify connector sync status."
+                    "Could not stream response from local Ollama. Please ensure Ollama is "
+                    "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is available."
                 )
                 system_prompt = (
-                    "You are AegisMind, a helpful and knowledgeable enterprise AI assistant.\n"
+                    "You are AegisMind, a professional, intelligent, and helpful AI assistant.\n"
                     "Answer the user's question clearly, accurately, and thoroughly."
                 )
                 prompt = f"USER QUESTION:\n{query}"
