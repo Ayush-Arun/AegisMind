@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-from aegismind_authz.ports import AuthzPort
 from aegismind_retrieval.adapters_vector import MemoryVectorStoreAdapter
 from aegismind_retrieval.pipeline import PipelineResult, RetrievalPipeline
 from aegismind_types import Citation, SearchResult
@@ -143,7 +142,6 @@ def test_chat_sse_token_budgeting_integration() -> None:
     state = CoreState(
         retrieval_pipeline=mock_pipeline,
         vector_store=MemoryVectorStoreAdapter(),
-        authz=AsyncMock(spec=AuthzPort),
         llm=mock_llm,
     )
     router = create_routes(state)

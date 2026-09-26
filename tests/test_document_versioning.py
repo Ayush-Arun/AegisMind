@@ -4,7 +4,6 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from aegismind_authz.adapters.memory import MemoryAuthzAdapter
 from aegismind_ingestion.adapters_parser import TextParserAdapter
 from aegismind_ingestion.chunking import SectionAwareChunker
 from aegismind_ingestion.pipeline import IngestionPipeline
@@ -17,7 +16,6 @@ from aegismind_types import ACL, Principal, Record
 @pytest.fixture
 def versioning_fixture() -> dict[str, Any]:
     vector_store = MemoryVectorStoreAdapter()
-    authz = MemoryAuthzAdapter()
     embedder = MockEmbedderAdapter(dimension=32)
     reranker = MockRerankerAdapter()
     parser = TextParserAdapter()
@@ -27,18 +25,15 @@ def versioning_fixture() -> dict[str, Any]:
         parser=parser,
         vector_store=vector_store,
         embedder=embedder,
-        authz=authz,
         chunker=chunker,
     )
     retrieval = RetrievalPipeline(
-        authz=authz,
         vector_store=vector_store,
         embedder=embedder,
         reranker=reranker,
     )
     return {
         "vector_store": vector_store,
-        "authz": authz,
         "embedder": embedder,
         "ingestion": ingestion,
         "retrieval": retrieval,

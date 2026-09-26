@@ -5,8 +5,6 @@ import logging
 
 import httpx
 import pytest
-from aegismind_authz.adapters.memory import MemoryAuthzAdapter
-from aegismind_authz.ports import RelationshipTuple
 from aegismind_retrieval.adapters_model import MockEmbedderAdapter, MockRerankerAdapter
 from aegismind_retrieval.adapters_vector import MemoryVectorStoreAdapter
 from aegismind_retrieval.pipeline import RetrievalPipeline
@@ -33,13 +31,11 @@ from aegismind_core.routes import CoreState
 @pytest.fixture
 def test_setup() -> tuple[CoreState, RetrievalPipeline]:
     vector_store = MemoryVectorStoreAdapter()
-    authz = MemoryAuthzAdapter()
     embedder = MockEmbedderAdapter(dimension=64)
     reranker = MockRerankerAdapter()
     telemetry = PrometheusTelemetryAdapter()
 
     pipeline = RetrievalPipeline(
-        authz=authz,
         vector_store=vector_store,
         embedder=embedder,
         reranker=reranker,
@@ -48,7 +44,6 @@ def test_setup() -> tuple[CoreState, RetrievalPipeline]:
 
     state = CoreState(
         retrieval_pipeline=pipeline,
-        authz=authz,
         vector_store=vector_store,
     )
     return state, pipeline
@@ -181,18 +176,7 @@ async def test_end_to_end_search_telemetry_flow(
         dense_vector=[0.1] * 64,
         metadata={"title": "Telemetry Guide", "tenant_id": "tenant-corp"},
     )
-    assert state.vector_store is not None
-    assert state.authz is not None
     await state.vector_store.upsert([chunk])
-    await state.authz.write_tuples(
-        [
-            RelationshipTuple(
-                resource="document:doc_telemetry_1",
-                relation="viewer",
-                subject="user:alice",
-            )
-        ]
-    )
 
     app = create_app(state=state)
     async with httpx.AsyncClient(
@@ -216,6 +200,4 @@ async def test_end_to_end_search_telemetry_flow(
         # Check metrics updated after search execution
         metrics_res = await client.get("/metrics")
         body = metrics_res.text
-        assert 'stage="stage_5_authz"' in body
-        assert 'stage="stage_6_reranking"' in body
-        assert 'tenant_id="tenant-corp"' in body
+        assert 'stage="stage_5_reranking"' in body

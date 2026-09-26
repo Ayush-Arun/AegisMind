@@ -11,32 +11,32 @@ from aegismind_core.registry import (
 
 
 def test_list_and_resolve_entry_point_adapters() -> None:
-    authz_adapters = list_adapters("authz")
-    assert "memory" in authz_adapters
-    assert "spicedb" in authz_adapters
-
     vector_adapters = list_adapters("vector_store")
     assert "memory" in vector_adapters
+    assert "sqlite" in vector_adapters
 
-    adapter_cls = resolve_adapter("authz", "memory")
-    assert adapter_cls.__name__ == "MemoryAuthzAdapter"
+    embed_adapters = list_adapters("embedder")
+    assert "mock" in embed_adapters
+
+    adapter_cls = resolve_adapter("vector_store", "sqlite")
+    assert adapter_cls.__name__ == "SqliteVectorStoreAdapter"
 
 
 def test_runtime_adapter_override() -> None:
-    class CustomAuthzAdapter:
+    class CustomVectorStoreAdapter:
         pass
 
     try:
-        register_adapter("authz", "custom", CustomAuthzAdapter)
-        assert "custom" in list_adapters("authz")
+        register_adapter("vector_store", "custom", CustomVectorStoreAdapter)
+        assert "custom" in list_adapters("vector_store")
 
-        resolved = resolve_adapter("authz", "custom")
-        assert resolved is CustomAuthzAdapter
+        resolved = resolve_adapter("vector_store", "custom")
+        assert resolved is CustomVectorStoreAdapter
     finally:
         clear_registry_overrides()
 
 
 def test_resolve_unknown_adapter_raises() -> None:
     with pytest.raises(KeyError) as exc_info:
-        resolve_adapter("authz", "nonexistent_adapter_xyz")
+        resolve_adapter("vector_store", "nonexistent_adapter_xyz")
     assert "nonexistent_adapter_xyz" in str(exc_info.value)

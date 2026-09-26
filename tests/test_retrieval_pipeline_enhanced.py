@@ -1,11 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from aegismind_authz.adapters.memory import MemoryAuthzAdapter
-from aegismind_authz.ports import RelationshipTuple
-from aegismind_connector_google_drive.connector import GoogleDriveConnector
-from aegismind_ingestion.adapters_parser import DoclingParserAdapter
-from aegismind_ingestion.pipeline import IngestionPipeline
 from aegismind_retrieval.adapters_model import (
     MockEmbedderAdapter,
     MockQueryRewriterAdapter,
@@ -25,14 +20,12 @@ from aegismind_core.routes import CoreState, create_routes
 @pytest.mark.asyncio
 async def test_stage_0_query_rewriting() -> None:
     """Verify Stage 0 query rewriting resolves pronouns against conversational chat history."""
-    authz = MemoryAuthzAdapter()
     vector_store = MemoryVectorStoreAdapter()
     embedder = MockEmbedderAdapter(dimension=64)
     reranker = MockRerankerAdapter()
     rewriter = MockQueryRewriterAdapter()
 
     pipeline = RetrievalPipeline(
-        authz=authz,
         vector_store=vector_store,
         embedder=embedder,
         reranker=reranker,
@@ -63,7 +56,6 @@ async def test_stage_0_query_rewriting() -> None:
 @pytest.mark.asyncio
 async def test_stage_1_and_2_dense_sparse_rrf_and_query_type_overfetch() -> None:
     """Verify dual dense and sparse search, RRF fusion, and query type overfetch bounding."""
-    authz = MemoryAuthzAdapter()
     vector_store = MemoryVectorStoreAdapter()
     embedder = MockEmbedderAdapter(dimension=64)
     reranker = MockRerankerAdapter()
@@ -99,16 +91,8 @@ async def test_stage_1_and_2_dense_sparse_rrf_and_query_type_overfetch() -> None
     )
 
     await vector_store.upsert([chunk1, chunk2])
-    await authz.write_tuples(
-        [
-            RelationshipTuple(
-                resource="document:doc_alpha", relation="viewer", subject="user:alice"
-            ),
-        ]
-    )
 
     pipeline = RetrievalPipeline(
-        authz=authz,
         vector_store=vector_store,
         embedder=embedder,
         reranker=reranker,
@@ -126,9 +110,6 @@ async def test_stage_1_and_2_dense_sparse_rrf_and_query_type_overfetch() -> None
     assert res_exploratory.overfetch_factor == 4.5
     assert len(res_exploratory.results) == 1
     assert res_exploratory.results[0].document_id == "doc_alpha"
-
-    # Test deny rate calculation
-    assert res_exploratory.deny_rate >= 0.0
 
 
 def test_stage_7_mmr_diversity() -> None:
@@ -202,66 +183,3 @@ async def test_feedback_capture_api() -> None:
     list_data = list_resp.json()
     assert list_data["total"] >= 1
     assert list_data["entries"][0]["query"] == payload["query"]
-
-
-@pytest.mark.asyncio
-async def test_google_drive_pipeline_end_to_end() -> None:
-    """Verify Google Drive connector ingestion and end-to-end Sacred Retrieval Pipeline."""
-    authz = MemoryAuthzAdapter()
-    vector_store = MemoryVectorStoreAdapter()
-    embedder = MockEmbedderAdapter(dimension=64)
-    reranker = MockRerankerAdapter()
-    rewriter = MockQueryRewriterAdapter()
-
-    # 1. Ingest Google Drive sample records
-    connector = GoogleDriveConnector()
-    records = [r async for r in connector.read()]
-    assert len(records) > 0
-
-    ingestion = IngestionPipeline(
-        parser=DoclingParserAdapter(),
-        vector_store=vector_store,
-        embedder=embedder,
-        authz=authz,
-    )
-
-    summary = await ingestion.ingest_records(records)
-    assert summary.chunks_indexed > 0
-    assert summary.tuples_written > 0
-
-    # Verify chunks have both dense and sparse representations
-    for chunk in vector_store._chunks.values():
-        assert chunk.embedding is not None
-        assert chunk.sparse_embedding is not None
-
-    # 2. Execute retrieval query
-    pipeline = RetrievalPipeline(
-        authz=authz,
-        vector_store=vector_store,
-        embedder=embedder,
-        reranker=reranker,
-        query_rewriter=rewriter,
-    )
-
-    # Extract allowed user from one of the records
-    target_record = records[0]
-    allowed_user = "user:employee@example.com"
-    for p in target_record.acl.allowed_principals:
-        if p.startswith("user:"):
-            allowed_user = p[len("user:") :]
-            break
-
-    user_principal = Principal(id=allowed_user, type="user")
-    query_text = str(target_record.payload.get("name") or "drive document")
-
-    search_result = await pipeline.execute(
-        query=query_text,
-        principal=user_principal,
-        top_k=3,
-        query_type="factual",
-    )
-
-    assert search_result.query == query_text
-    assert search_result.overfetch_factor == 3.0
-    assert len(search_result.results) > 0
-    assert search_result.results[0].citation is not None

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from aegismind_authz.adapters.memory import MemoryAuthzAdapter
-from aegismind_authz.ports import RelationshipTuple
 from aegismind_retrieval.adapters_model import MockEmbedderAdapter, MockRerankerAdapter
 from aegismind_retrieval.adapters_vector import MemoryVectorStoreAdapter
 from aegismind_retrieval.eval.dataset import GOLDEN_EVAL_DATASET
@@ -14,7 +12,6 @@ from aegismind_types import ACL, Chunk, FeedbackEntry
 @pytest.mark.asyncio
 async def test_retrieval_eval_harness_benchmark() -> None:
     """Run retrieval benchmark harness against golden dataset verifying Recall and MRR."""
-    authz = MemoryAuthzAdapter()
     vector_store = MemoryVectorStoreAdapter()
     embedder = MockEmbedderAdapter(dimension=64)
     reranker = MockRerankerAdapter()
@@ -22,7 +19,6 @@ async def test_retrieval_eval_harness_benchmark() -> None:
     # Index sample chunks for Google Drive triples
     gdrive_triples = [t for t in GOLDEN_EVAL_DATASET if t.connector == "google_drive"]
     chunks: list[Chunk] = []
-    tuples: list[RelationshipTuple] = []
 
     for triple in gdrive_triples:
         doc_id = triple.expected_source_doc_ids[0]
@@ -42,19 +38,9 @@ async def test_retrieval_eval_harness_benchmark() -> None:
         )
         chunks.append(chunk)
 
-        tuples.append(
-            RelationshipTuple(
-                resource=f"document:{doc_id}",
-                relation="viewer",
-                subject="user:eval_runner",
-            )
-        )
-
     await vector_store.upsert(chunks)
-    await authz.write_tuples(tuples)
 
     pipeline = RetrievalPipeline(
-        authz=authz,
         vector_store=vector_store,
         embedder=embedder,
         reranker=reranker,
@@ -75,7 +61,6 @@ async def test_retrieval_eval_harness_benchmark() -> None:
 def test_triage_negative_feedback_into_dataset() -> None:
     """Verify that thumbs-down feedback items are converted into candidate eval triples."""
     pipeline = RetrievalPipeline(
-        authz=MemoryAuthzAdapter(),
         vector_store=MemoryVectorStoreAdapter(),
         embedder=MockEmbedderAdapter(),
         reranker=MockRerankerAdapter(),

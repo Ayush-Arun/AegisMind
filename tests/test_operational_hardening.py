@@ -3,7 +3,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from aegismind_authz.adapters.memory import MemoryAuthzAdapter
 from aegismind_connector_sdk.retry import async_retry
 from aegismind_ingestion.dlq import MemoryDLQAdapter
 from aegismind_ingestion.pipeline import IngestionPipeline
@@ -137,7 +136,6 @@ async def test_ingestion_pipeline_enqueues_to_dlq_on_failure() -> None:
         parser=MockFailingParser(),
         vector_store=MemoryVectorStoreAdapter(),
         embedder=MockEmbedderAdapter(dimension=16),
-        authz=MemoryAuthzAdapter(),
         dlq=dlq,
     )
 
@@ -164,13 +162,11 @@ async def test_ingestion_pipeline_enqueues_to_dlq_on_failure() -> None:
 @pytest.fixture
 def test_state() -> CoreState:
     vector_store = MemoryVectorStoreAdapter()
-    authz = MemoryAuthzAdapter()
     embedder = MockEmbedderAdapter(dimension=16)
     reranker = MockRerankerAdapter()
     dlq = MemoryDLQAdapter()
 
     pipeline = RetrievalPipeline(
-        authz=authz,
         vector_store=vector_store,
         embedder=embedder,
         reranker=reranker,
@@ -178,7 +174,6 @@ def test_state() -> CoreState:
 
     return CoreState(
         retrieval_pipeline=pipeline,
-        authz=authz,
         vector_store=vector_store,
         dlq=dlq,
     )
@@ -207,7 +202,6 @@ async def test_health_and_readiness_endpoints(test_state: CoreState) -> None:
         data = resp_ready.json()
         assert data["status"] == "ready"
         assert data["checks"]["vector_store"] == "ok (in-memory)"
-        assert data["checks"]["authz"] == "ok"
         assert data["checks"]["embedder"] == "ok"
         assert data["checks"]["reranker"] == "ok"
 
@@ -220,11 +214,11 @@ async def test_health_and_readiness_endpoints(test_state: CoreState) -> None:
 
 @pytest.mark.asyncio
 async def test_readiness_probe_fails_when_dependency_unhealthy(test_state: CoreState) -> None:
-    # Inject failure into authz bulk_check
+    # Inject failure into vector store
     with patch.object(
-        test_state.authz,
-        "bulk_check",
-        new=AsyncMock(side_effect=RuntimeError("SpiceDB connection refused")),
+        test_state.vector_store,
+        "query_dense",
+        new=AsyncMock(side_effect=RuntimeError("Vector store corrupted")),
     ):
         app = create_app(test_state)
         async with AsyncClient(
@@ -234,7 +228,7 @@ async def test_readiness_probe_fails_when_dependency_unhealthy(test_state: CoreS
             assert resp.status_code == 503
             data = resp.json()
             assert data["status"] == "unhealthy"
-            assert "SpiceDB connection refused" in data["checks"]["authz"]
+            assert "Vector store corrupted" in data["checks"]["vector_store"]
 
 
 @pytest.mark.asyncio

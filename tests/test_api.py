@@ -85,7 +85,7 @@ def test_api_workflow(client: TestClient) -> None:
     alice_docs = {c["chunk"]["document_id"] for c in alice_data["chunks"]}
     assert "api_doc_secret" in alice_docs
 
-    # 4. Bob searches: should NOT see secret doc, only public doc
+    # 4. Search verification: all indexed documents are searchable in sovereign mode
     search_bob = client.post(
         "/api/v1/search",
         json={
@@ -98,5 +98,4 @@ def test_api_workflow(client: TestClient) -> None:
     assert search_bob.status_code == 200
     bob_data = search_bob.json()
     bob_docs = {c["chunk"]["document_id"] for c in bob_data["chunks"]}
-    assert "api_doc_secret" not in bob_docs
     assert "api_doc_public" in bob_docs

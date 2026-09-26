@@ -205,13 +205,11 @@ def test_api_routes_consume_llm_port() -> None:
         models=["custom-llm-v1", "custom-llm-v2"],
     )
 
-    from aegismind_authz.adapters.memory import MemoryAuthzAdapter
     from aegismind_retrieval.adapters_model import MockEmbedderAdapter, MockRerankerAdapter
     from aegismind_retrieval.adapters_vector import MemoryVectorStoreAdapter
     from aegismind_retrieval.pipeline import RetrievalPipeline
 
     pipeline = RetrievalPipeline(
-        authz=MemoryAuthzAdapter(),
         vector_store=MemoryVectorStoreAdapter(),
         embedder=MockEmbedderAdapter(),
         reranker=MockRerankerAdapter(),
