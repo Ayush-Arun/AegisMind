@@ -32,7 +32,7 @@ COPY --from=builder /app/connectors /app/connectors
 COPY --from=builder /app/src /app/src
 
 ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONPATH="/app/packages/aegismind-ingestion/src:/app/packages/aegismind-types/src:/app/packages/aegismind-authz/src:/app/packages/aegismind-connector-sdk/src:/app/packages/aegismind-infra/src:/app/packages/aegismind-identity/src:/app/packages/aegismind-retrieval/src:/app/packages/aegismind-mcp-bridge/src" \
+    PYTHONPATH="/app/packages/aegismind-ingestion/src:/app/packages/aegismind-types/src:/app/packages/aegismind-connector-sdk/src:/app/packages/aegismind-infra/src:/app/packages/aegismind-identity/src:/app/packages/aegismind-retrieval/src:/app/packages/aegismind-mcp-bridge/src" \
     PYTHONUNBUFFERED=1
 
 USER aegismind
