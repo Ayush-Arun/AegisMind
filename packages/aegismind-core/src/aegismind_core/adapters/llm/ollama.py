@@ -77,6 +77,17 @@ class OllamaAdapter:
         active = await _find_active_ollama_url()
         return active or "http://127.0.0.1:11434"
 
+    def _resolve_generative_model(self, model: str | None) -> str:
+        chosen = model or self.default_model
+        if any(kw in chosen.lower() for kw in self.KNOWN_NON_GENERATIVE_KEYWORDS):
+            logger.warning(
+                "Requested model '%s' is an embedding model; falling back to '%s'",
+                chosen,
+                self.default_model,
+            )
+            return self.default_model
+        return chosen
+
     async def generate(
         self,
         prompt: str,
@@ -86,7 +97,7 @@ class OllamaAdapter:
         temperature: float | None = None,
     ) -> str:
         """Generate a complete text completion using Ollama /api/generate."""
-        chosen_model = model or self.default_model
+        chosen_model = self._resolve_generative_model(model)
         base_url = await self._resolve_base_url()
         payload: dict[str, Any] = {
             "model": chosen_model,
@@ -134,7 +145,7 @@ class OllamaAdapter:
         temperature: float | None = None,
     ) -> AsyncIterator[str]:
         """Stream completion tokens from Ollama."""
-        chosen_model = model or self.default_model
+        chosen_model = self._resolve_generative_model(model)
         base_url = await self._resolve_base_url()
 
         payload: dict[str, Any] = {
@@ -217,21 +228,39 @@ class OllamaAdapter:
             return 16384
         return self.default_context_window
 
+    KNOWN_NON_GENERATIVE_KEYWORDS = ("embed", "embedding", "bge", "rerank", "minilm", "bert")
+
     async def list_models(self) -> list[str]:
-        """Discover available models from Ollama."""
+        """Discover available generative text models from Ollama."""
         base_url = await self._resolve_base_url()
         try:
             if self._client is not None:
                 resp = await self._client.get(f"{base_url}/api/tags")
                 if resp.status_code == 200:
                     data = resp.json()
-                    return [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+                    raw_models = [
+                        m.get("name", "") for m in data.get("models", []) if m.get("name")
+                    ]
+                    generative = [
+                        m
+                        for m in raw_models
+                        if not any(kw in m.lower() for kw in self.KNOWN_NON_GENERATIVE_KEYWORDS)
+                    ]
+                    return generative or raw_models
             else:
                 async with httpx.AsyncClient(timeout=3.0) as client:
                     resp = await client.get(f"{base_url}/api/tags")
                     if resp.status_code == 200:
                         data = resp.json()
-                        return [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+                        raw_models = [
+                            m.get("name", "") for m in data.get("models", []) if m.get("name")
+                        ]
+                        generative = [
+                            m
+                            for m in raw_models
+                            if not any(kw in m.lower() for kw in self.KNOWN_NON_GENERATIVE_KEYWORDS)
+                        ]
+                        return generative or raw_models
         except Exception as exc:
             logger.debug("Failed listing Ollama models: %s", exc)
         return []

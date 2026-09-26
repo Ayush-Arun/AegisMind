@@ -656,7 +656,13 @@ def create_routes(state: CoreState) -> APIRouter:
             models = await llm_adapter.list_models()
         except Exception:
             models = []
-        active = models[0] if models else getattr(llm_adapter, "default_model", "llama3.2:latest")
+        default_name = getattr(llm_adapter, "default_model", "llama3.2:latest")
+        if default_name in models:
+            active = default_name
+        elif models:
+            active = models[0]
+        else:
+            active = default_name
         provider = os.environ.get("LLM_PROVIDER", "ollama")
         return {
             "models": models,
