@@ -29,7 +29,7 @@ class Principal(BaseModel):
 
 
 class Permission(BaseModel):
-    """Fine-grained permission relation in Zanzibar style."""
+    """Fine-grained permission relation."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -196,13 +196,13 @@ class SearchResult(BaseModel):
 
 
 class TokenConsistency(BaseModel):
-    """Zanzibar consistency requirement for permission checks."""
+    """Consistency requirement for authorization checks."""
 
     model_config = ConfigDict(frozen=True)
 
     token: str | None = Field(
         default=None,
-        description="Consistency token string, e.g. SpiceDB zed token",
+        description="Consistency token string",
     )
     at_least_as_fresh: bool = Field(
         default=True,

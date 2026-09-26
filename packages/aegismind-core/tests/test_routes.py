@@ -4,7 +4,6 @@ from typing import Any
 
 import httpx
 import pytest
-from aegismind_authz.ports import AuthzPort, CheckRequest
 from aegismind_retrieval.adapters_model import MockEmbedderAdapter, MockRerankerAdapter
 from aegismind_retrieval.adapters_vector import MemoryVectorStoreAdapter
 from aegismind_retrieval.pipeline import RetrievalPipeline
@@ -14,36 +13,13 @@ from aegismind_core.app import create_app
 from aegismind_core.routes import CoreState
 
 
-class MockAuthz(AuthzPort):
-    def __init__(self, allowed_subjects: set[str] | None = None) -> None:
-        self.allowed_subjects = allowed_subjects or {"user:alice", "user:bob"}
-
-    async def bulk_check(
-        self,
-        requests: list[CheckRequest],
-        consistency: TokenConsistency | None = None,
-    ) -> list[bool]:
-        return [req.subject in self.allowed_subjects for req in requests]
-
-    async def write_tuples(self, tuples: list[Any]) -> TokenConsistency:
-        return TokenConsistency(token="zed_mock")
-
-    async def delete_tuples(self, tuples: list[Any]) -> TokenConsistency:
-        return TokenConsistency(token="zed_mock")
-
-    async def check_permission(self, subject: Principal, relation: str, resource: str) -> bool:
-        return f"{subject.type}:{subject.id}" in self.allowed_subjects
-
-
 @pytest.fixture
 def test_setup() -> tuple[CoreState, RetrievalPipeline]:
     vector_store = MemoryVectorStoreAdapter()
     embedder = MockEmbedderAdapter(dimension=8)
     reranker = MockRerankerAdapter()
-    authz = MockAuthz()
 
     pipeline = RetrievalPipeline(
-        authz=authz,
         vector_store=vector_store,
         embedder=embedder,
         reranker=reranker,
@@ -51,7 +27,6 @@ def test_setup() -> tuple[CoreState, RetrievalPipeline]:
 
     state = CoreState(
         retrieval_pipeline=pipeline,
-        authz=authz,
         vector_store=vector_store,
     )
     return state, pipeline
@@ -121,17 +96,6 @@ async def test_search_and_audit(test_setup: tuple[CoreState, RetrievalPipeline])
         assert audit_data["total"] >= 1
         assert audit_data["entries"][0]["event_type"] == "search"
 
-        # Search as eve (denied)
-        denied_payload = {
-            "query": "security policies",
-            "principal_id": "eve",
-            "principal_type": "user",
-            "top_k": 5,
-        }
-        denied_res = await client.post("/api/v1/search", json=denied_payload)
-        assert denied_res.status_code == 200
-        assert len(denied_res.json()["results"]) == 0
-
 
 @pytest.mark.asyncio
 async def test_chat_sse_stream(test_setup: tuple[CoreState, RetrievalPipeline]) -> None:
@@ -141,7 +105,7 @@ async def test_chat_sse_stream(test_setup: tuple[CoreState, RetrievalPipeline]) 
     c1 = Chunk(
         id="c_chat",
         document_id="doc_chat",
-        content="AegisMind integrates Zanzibar authorization directly into vector retrieval.",
+        content="AegisMind integrates sovereign retrieval directly into local pipelines.",
         embedding=[0.1] * 8,
         metadata={"title": "Architecture Overview"},
     )

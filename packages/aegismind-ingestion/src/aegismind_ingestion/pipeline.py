@@ -3,8 +3,6 @@ from __future__ import annotations
 import hashlib
 import logging
 
-from aegismind_authz.mappers import acl_to_relationship_tuples
-from aegismind_authz.ports import AuthzPort
 from aegismind_retrieval.ports import EmbedderPort, VectorStorePort
 from aegismind_types import Chunk, Document, Record
 
@@ -22,14 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 class IngestionPipeline(IngestionPipelinePort):
-    """End-to-end ingestion pipeline coordinating parsing, chunking, embedding, and authz."""
+    """End-to-end ingestion pipeline coordinating parsing, chunking, and embedding."""
 
     def __init__(
         self,
         parser: ParserPort,
         vector_store: VectorStorePort,
         embedder: EmbedderPort,
-        authz: AuthzPort,
         chunker: ChunkerPort | None = None,
         sanitizer: IngestionSanitizer | None = None,
         dlq: DLQPort | None = None,
@@ -37,7 +34,6 @@ class IngestionPipeline(IngestionPipelinePort):
         self.parser = parser
         self.vector_store = vector_store
         self.embedder = embedder
-        self.authz = authz
         self.chunker = chunker or SectionAwareChunker()
         self.sanitizer = sanitizer or IngestionSanitizer()
         self.dlq = dlq
@@ -47,10 +43,9 @@ class IngestionPipeline(IngestionPipelinePort):
 
         Enforces:
         1. Parse records to canonical Documents.
-        2. Write Zanzibar SpiceDB relationship tuples before indexing chunks.
-        3. Chunk documents, sanitize, and compute SHA-256 content hashes.
-        4. Preserve existing embeddings for unchanged chunks to avoid re-embedding.
-        5. Atomically soft-delete old document chunks and upsert versioned chunks.
+        2. Chunk documents, sanitize, and compute SHA-256 content hashes.
+        3. Preserve existing embeddings for unchanged chunks to avoid re-embedding.
+        4. Atomically soft-delete old document chunks and upsert versioned chunks.
         """
         if not records:
             return IngestionSummary()
@@ -58,7 +53,6 @@ class IngestionPipeline(IngestionPipelinePort):
         total_records = len(records)
         documents: list[Document] = []
         all_chunks: list[Chunk] = []
-        all_tuples = []
         errors: list[str] = []
 
         # 1. Parse records
@@ -81,34 +75,7 @@ class IngestionPipeline(IngestionPipelinePort):
                     except Exception as dlq_exc:
                         logger.warning("Failed enqueueing parse failure to DLQ: %s", dlq_exc)
 
-        # 2. Write SpiceDB tuples first so permissions are active before chunks become searchable
-        for doc in documents:
-            try:
-                tuples = acl_to_relationship_tuples(
-                    acl=doc.acl,
-                    resource_id=doc.id,
-                    resource_type="document",
-                )
-                all_tuples.extend(tuples)
-            except Exception as exc:
-                err_msg = f"Failed to map ACLs for document {doc.id}: {exc}"
-                logger.error(err_msg)
-                errors.append(err_msg)
-
-        if all_tuples:
-            try:
-                await self.authz.write_tuples(all_tuples)
-                logger.info(
-                    "Wrote %d Zanzibar relationship tuples for %d documents",
-                    len(all_tuples),
-                    len(documents),
-                )
-            except Exception as exc:
-                err_msg = f"Failed to write relationship tuples to Authz: {exc}"
-                logger.error(err_msg)
-                errors.append(err_msg)
-
-        # 3. Chunk documents, check SHA-256 content hashes, and identify chunks to embed
+        # 2. Chunk documents, check SHA-256 content hashes, and identify chunks to embed
         prepared_chunks: list[Chunk] = []
         chunks_to_embed: list[tuple[Chunk, str, int]] = []
 
@@ -118,9 +85,18 @@ class IngestionPipeline(IngestionPipelinePort):
                 existing_hash_map: dict[str, Chunk] = {
                     c.content_hash: c for c in existing_chunks if c.content_hash and c.embedding
                 }
-                next_version = max((c.version for c in existing_chunks), default=0) + 1
+                version = (
+                    max([c.version for c in existing_chunks], default=0) + 1
+                    if existing_chunks
+                    else 1
+                )
+
+                import inspect
 
                 doc_chunks = self.chunker.chunk(doc)
+                if inspect.isawaitable(doc_chunks):
+                    doc_chunks = await doc_chunks
+
                 for c in doc_chunks:
                     san_res = self.sanitizer.sanitize(c.content, chunk_id=c.id)
                     cleaned_content = (
@@ -139,7 +115,7 @@ class IngestionPipeline(IngestionPipelinePort):
                     content_hash = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
 
                     # Check if unchanged chunk already has embedding in prior version
-                    versioned_chunk_id = f"{c.document_id}_v{next_version}_chunk_{c.index}"
+                    versioned_chunk_id = f"{c.document_id}_v{version}_chunk_{c.index}"
                     if content_hash in existing_hash_map:
                         cached = existing_hash_map[content_hash]
                         logger.debug(
@@ -159,7 +135,7 @@ class IngestionPipeline(IngestionPipelinePort):
                             metadata=chunk_meta,
                             content_hash=content_hash,
                             is_deleted=False,
-                            version=next_version,
+                            version=version,
                         )
                         prepared_chunks.append(reused_chunk)
                     else:
@@ -173,28 +149,18 @@ class IngestionPipeline(IngestionPipelinePort):
                             metadata=chunk_meta,
                             content_hash=content_hash,
                             is_deleted=False,
-                            version=next_version,
+                            version=version,
                         )
-                        chunks_to_embed.append((pending_chunk, content_hash, next_version))
+                        chunks_to_embed.append((pending_chunk, content_hash, version))
             except Exception as exc:
                 err_msg = f"Failed chunking/versioning document {doc.id}: {exc}"
                 logger.error(err_msg)
                 errors.append(err_msg)
-                if self.dlq is not None:
-                    try:
-                        await self.dlq.enqueue(
-                            connector_id=doc.metadata.get("source") or "unknown",
-                            resource_id=doc.id,
-                            error_message=err_msg,
-                            payload={"title": doc.title, "document_id": doc.id},
-                        )
-                    except Exception as dlq_exc:
-                        logger.warning("Failed enqueueing chunking failure to DLQ: %s", dlq_exc)
 
-        # 4. Generate embeddings only for newly created or modified chunks
+        # 3. Batch generate embeddings for new or modified chunks
         if chunks_to_embed:
             chunk_texts = [
-                f"{c.contextual_prefix}{c.content}" if c.contextual_prefix else c.content
+                f"{c.contextual_prefix} {c.content}".strip() if c.contextual_prefix else c.content
                 for c, _, _ in chunks_to_embed
             ]
             try:
@@ -243,7 +209,7 @@ class IngestionPipeline(IngestionPipelinePort):
                                 "Failed enqueueing embedding failure to DLQ: %s", dlq_exc
                             )
 
-        # 5. Atomically soft-delete old document chunks and index new versioned chunks
+        # 4. Atomically soft-delete old document chunks and index new versioned chunks
         for doc in documents:
             try:
                 await self.vector_store.soft_delete_document(doc.id)
@@ -279,6 +245,6 @@ class IngestionPipeline(IngestionPipelinePort):
             records_ingested=total_records,
             documents_created=len(documents),
             chunks_indexed=len(all_chunks),
-            tuples_written=len(all_tuples),
+            tuples_written=0,
             errors=errors,
         )

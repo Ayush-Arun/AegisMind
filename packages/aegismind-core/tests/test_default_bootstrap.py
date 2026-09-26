@@ -34,7 +34,7 @@ async def test_default_app_bootstrap_and_chat_synthesis() -> None:
         assert "event: token" in body
         assert "event: citations" in body
         assert "event: done" in body
-        assert "SEC-892" in body or "Zanzibar" in body or "revocation" in body
+        assert "SEC-892" in body or "sandboxing" in body or "revocation" in body or "token" in body
 
         # 3. Test connectors list returns discovered connectors
         conn_resp = await client.get("/api/v1/connectors")

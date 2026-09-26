@@ -148,7 +148,7 @@ class TelemetryPort(Protocol):
         ...
 
     def record_authz_metrics(self, tenant_id: str, evaluated: int, denied: int) -> None:
-        """Record Zanzibar authorization candidate evaluation counts."""
+        """Record candidate evaluation counts."""
         ...
 
     def record_overfetch_effectiveness(self, tenant_id: str, ratio: float) -> None:

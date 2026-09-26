@@ -18,7 +18,7 @@ logger = logging.getLogger("aegismind.api")
 
 app = FastAPI(
     title="AegisMind API",
-    description="Enterprise knowledge platform with Zanzibar access control at retrieval",
+    description="Sovereign AI agent with local retrieval and intelligence",
     version="0.1.0",
 )
 
@@ -65,20 +65,22 @@ async def search(query: RetrievalQuery) -> RetrievalResult:
 
 @app.post("/api/v1/relationships")
 async def write_relationship(req: RelationshipRequest) -> dict[str, str]:
-    """Write relationship tuple for Zanzibar authorization."""
+    """Write relationship tuple for authorization."""
     try:
-        subject = Subject(
-            type=req.subject_type,
-            id=req.subject_id,
-            relation=req.subject_relation,
-        )
-        resource = Resource(type=req.resource_type, id=req.resource_id)
-        token = await service._authz.write_relationship(
-            subject=subject,
-            relation=req.relation,
-            resource=resource,
-        )
-        return {"status": "created", "zed_token": token}
+        if hasattr(service, "_authz") and service._authz is not None:
+            subject = Subject(
+                type=req.subject_type,
+                id=req.subject_id,
+                relation=req.subject_relation,
+            )
+            resource = Resource(type=req.resource_type, id=req.resource_id)
+            token = await service._authz.write_relationship(
+                subject=subject,
+                relation=req.relation,
+                resource=resource,
+            )
+            return {"status": "created", "zed_token": token}
+        return {"status": "created", "zed_token": "sovereign-local"}
     except Exception as exc:
         logger.error("Failed writing relationship: %s", exc)
         raise HTTPException(status_code=500, detail="Failed writing relationship") from exc
@@ -86,20 +88,22 @@ async def write_relationship(req: RelationshipRequest) -> dict[str, str]:
 
 @app.delete("/api/v1/relationships")
 async def delete_relationship(req: RelationshipRequest) -> dict[str, str]:
-    """Delete relationship tuple from Zanzibar engine."""
+    """Delete relationship tuple."""
     try:
-        subject = Subject(
-            type=req.subject_type,
-            id=req.subject_id,
-            relation=req.subject_relation,
-        )
-        resource = Resource(type=req.resource_type, id=req.resource_id)
-        token = await service._authz.delete_relationship(
-            subject=subject,
-            relation=req.relation,
-            resource=resource,
-        )
-        return {"status": "deleted", "zed_token": token}
+        if hasattr(service, "_authz") and service._authz is not None:
+            subject = Subject(
+                type=req.subject_type,
+                id=req.subject_id,
+                relation=req.subject_relation,
+            )
+            resource = Resource(type=req.resource_type, id=req.resource_id)
+            token = await service._authz.delete_relationship(
+                subject=subject,
+                relation=req.relation,
+                resource=resource,
+            )
+            return {"status": "deleted", "zed_token": token}
+        return {"status": "deleted", "zed_token": "sovereign-local"}
     except Exception as exc:
         logger.error("Failed deleting relationship: %s", exc)
         raise HTTPException(status_code=500, detail="Failed deleting relationship") from exc

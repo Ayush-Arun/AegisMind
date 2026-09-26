@@ -4,7 +4,6 @@ from typing import Any
 
 import httpx
 import pytest
-from aegismind_authz.ports import AuthzPort, CheckRequest
 from aegismind_mcp_bridge import MCPBridgeServer, MCPClient, MCPTool, MCPToolCallResponse
 from aegismind_retrieval.adapters_model import MockEmbedderAdapter, MockRerankerAdapter
 from aegismind_retrieval.adapters_vector import MemoryVectorStoreAdapter
@@ -15,33 +14,13 @@ from aegismind_core.app import create_app
 from aegismind_core.routes import CoreState
 
 
-class MockAuthz(AuthzPort):
-    async def bulk_check(
-        self,
-        requests: list[CheckRequest],
-        consistency: TokenConsistency | None = None,
-    ) -> list[bool]:
-        return [True for _ in requests]
-
-    async def write_tuples(self, tuples: list[Any]) -> TokenConsistency:
-        return TokenConsistency(token="zed_mock")
-
-    async def delete_tuples(self, tuples: list[Any]) -> TokenConsistency:
-        return TokenConsistency(token="zed_mock")
-
-    async def check_permission(self, subject: Principal, relation: str, resource: str) -> bool:
-        return True
-
-
 @pytest.mark.asyncio
 async def test_mcp_endpoints_and_jsonrpc() -> None:
     vector_store = MemoryVectorStoreAdapter()
     embedder = MockEmbedderAdapter(dimension=8)
     reranker = MockRerankerAdapter()
-    authz = MockAuthz()
 
     pipeline = RetrievalPipeline(
-        authz=authz,
         vector_store=vector_store,
         embedder=embedder,
         reranker=reranker,
@@ -59,7 +38,6 @@ async def test_mcp_endpoints_and_jsonrpc() -> None:
 
     state = CoreState(
         retrieval_pipeline=pipeline,
-        authz=authz,
         vector_store=vector_store,
     )
     app = create_app(state)

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+from aegismind_retrieval.adapters_local_embed import (
+    FastEmbedAdapter,
+    LocalDeterministicEmbedderAdapter,
+    OllamaEmbedderAdapter,
+)
 from aegismind_retrieval.adapters_model import (
     LLMQueryRewriterAdapter,
     MockEmbedderAdapter,
     MockQueryRewriterAdapter,
     MockRerankerAdapter,
     OllamaQueryRewriterAdapter,
-    TeiEmbedderAdapter,
-    TeiRerankerAdapter,
 )
+from aegismind_retrieval.adapters_sqlite_vector import SqliteVectorStoreAdapter
 from aegismind_retrieval.adapters_vector import (
     MemoryVectorStoreAdapter,
-    PgVectorScaleAdapter,
     QdrantVectorStoreAdapter,
 )
 from aegismind_retrieval.mmr import DEFAULT_LAMBDA_MULT, maximal_marginal_relevance
@@ -32,21 +35,22 @@ __all__ = [
     "NoOpTelemetryAdapter",
     "RRF_DEFAULT_K",
     "EmbedderPort",
+    "FastEmbedAdapter",
     "LLMQueryRewriterAdapter",
+    "LocalDeterministicEmbedderAdapter",
     "MemoryVectorStoreAdapter",
     "MockEmbedderAdapter",
     "MockQueryRewriterAdapter",
     "MockRerankerAdapter",
+    "OllamaEmbedderAdapter",
     "OllamaQueryRewriterAdapter",
-    "PgVectorScaleAdapter",
     "PipelineResult",
     "QdrantVectorStoreAdapter",
     "QueryRewriterPort",
     "RerankerPort",
     "RetrievalPipeline",
     "ScoredChunk",
-    "TeiEmbedderAdapter",
-    "TeiRerankerAdapter",
+    "SqliteVectorStoreAdapter",
     "TelemetryPort",
     "VectorStorePort",
     "fuse_dense_sparse",

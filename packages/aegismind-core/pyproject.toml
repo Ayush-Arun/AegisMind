@@ -9,7 +9,6 @@ description = "Core backend, API, and orchestration engine for AegisMind"
 requires-python = ">=3.12"
 dependencies = [
     "aegismind-types",
-    "aegismind-authz",
     "aegismind-retrieval",
     "aegismind-ingestion",
     "aegismind-identity",
@@ -30,7 +29,6 @@ where = ["src"]
 
 [tool.uv.sources]
 aegismind-types = { workspace = true }
-aegismind-authz = { workspace = true }
 aegismind-retrieval = { workspace = true }
 aegismind-ingestion = { workspace = true }
 aegismind-identity = { workspace = true }

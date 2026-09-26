@@ -381,7 +381,7 @@ GOLDEN_EVAL_DATASET: list[EvalTriple] = [
         id="github_03",
         connector="github",
         query="What dependencies were updated in dependabot PR 102?",
-        expected_answer=("Dependabot updated pydantic from 2.9 to 2.10 and authzed gRPC client."),
+        expected_answer=("Dependabot updated pydantic from 2.9 to 2.10 and grpcio client."),
         expected_source_doc_ids=["github_pr_102_dependencies"],
     ),
     EvalTriple(

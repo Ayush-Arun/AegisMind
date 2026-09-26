@@ -14,7 +14,7 @@ class ConsistencyRequirement(StrEnum):
 
 
 class ConsistencyToken(BaseModel):
-    """Consistency token representing SpiceDB or Zanzibar zed tokens.
+    """Consistency token representing causal sync tokens.
 
     Enables causal consistency across writes and subsequent reads.
     """
@@ -41,7 +41,7 @@ class Subject(BaseModel):
     )
 
     def to_string(self) -> str:
-        """Serialize subject to Zanzibar string notation."""
+        """Serialize subject to canonical string notation."""
         if self.relation:
             return f"{self.type}:{self.id}#{self.relation}"
         return f"{self.type}:{self.id}"
@@ -56,7 +56,7 @@ class Resource(BaseModel):
     id: str = Field(..., description="Unique resource identifier")
 
     def to_string(self) -> str:
-        """Serialize resource to Zanzibar string notation."""
+        """Serialize resource to canonical string notation."""
         return f"{self.type}:{self.id}"
 
 

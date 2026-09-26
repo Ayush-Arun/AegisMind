@@ -8,7 +8,6 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from aegismind_authz.ports import AuthzPort, CheckRequest, RelationshipTuple
 from aegismind_connector_sdk.ports import ConnectorPort, ConnectorSpec
 from aegismind_infra.ports import SecretStorePort
 from aegismind_infra.secrets import MemorySecretStore
@@ -108,7 +107,7 @@ class GroupAliasRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     idp_group: str = Field(..., description="Source Identity Provider group name")
-    canonical_group: str = Field(..., description="Target canonical Zanzibar group identifier")
+    canonical_group: str = Field(..., description="Target canonical group identifier")
     tenant_id: str | None = Field(default=None)
 
 
@@ -185,7 +184,6 @@ class CoreState:
     def __init__(
         self,
         retrieval_pipeline: RetrievalPipeline | None = None,
-        authz: AuthzPort | None = None,
         vector_store: VectorStorePort | None = None,
         ingestion_pipeline: IngestionPipelinePort | None = None,
         secret_store: SecretStorePort | None = None,
@@ -193,7 +191,7 @@ class CoreState:
         dlq: DLQPort | None = None,
     ) -> None:
         self.retrieval_pipeline = retrieval_pipeline
-        self.authz = authz
+        self.authz = None
         self.vector_store = vector_store or MemoryVectorStoreAdapter()
         self.ingestion_pipeline = ingestion_pipeline
         self.secret_store = secret_store or MemorySecretStore()
@@ -242,7 +240,6 @@ def create_routes(state: CoreState) -> APIRouter:
 
             seeded = await init_default_core_state()
             state.retrieval_pipeline = seeded.retrieval_pipeline
-            state.authz = seeded.authz
             state.vector_store = seeded.vector_store
             state.connectors = seeded.connectors
             state.indexed_resources = seeded.indexed_resources
@@ -331,7 +328,6 @@ def create_routes(state: CoreState) -> APIRouter:
 
             seeded = await init_default_core_state()
             state.retrieval_pipeline = seeded.retrieval_pipeline
-            state.authz = seeded.authz
             state.vector_store = seeded.vector_store
             state.connectors = seeded.connectors
             state.indexed_resources = seeded.indexed_resources
@@ -360,10 +356,7 @@ def create_routes(state: CoreState) -> APIRouter:
 
             # Stage 0: Thinking progress indications
             yield "event: thinking\ndata: Querying vector store with coarse tenant filter...\n\n"
-            yield (
-                "event: thinking\ndata: Evaluating Zanzibar relationship tuples via "
-                "SpiceDB bulk_check...\n\n"
-            )
+            yield "event: thinking\ndata: Fusing dense and lexical search candidates...\n\n"
             await asyncio.sleep(0.04)
             yield (
                 "event: thinking\ndata: Applying cross-encoder reranker and "
@@ -407,14 +400,14 @@ def create_routes(state: CoreState) -> APIRouter:
             elif res.total_candidates_evaluated > 0 and res.authorized_candidates_count == 0:
                 fallback_answer_text = (
                     f"Access denied: Relevant candidate documents matched query '{query}', but "
-                    f"principal '{effective_principal_id}' lacks Zanzibar viewer authorization. "
+                    f"principal '{effective_principal_id}' lacks viewer authorization. "
                     "Under AegisMind zero-leakage security, unauthorized content is strictly "
                     "excluded."
                 )
                 system_prompt = (
                     "You are AegisMind AI assistant.\n"
-                    "Notice: Matching candidate documents exist in the enterprise repository, "
-                    "but the user lacks Zanzibar viewer authorization to read them. Mention this "
+                    "Notice: Matching candidate documents exist in the repository, "
+                    "but the user lacks viewer authorization to read them. Mention this "
                     "access boundary briefly, then answer the user's question helpfully using "
                     "general knowledge."
                 )
@@ -663,14 +656,13 @@ def create_routes(state: CoreState) -> APIRouter:
     # 9. POST /api/v1/documents: Custom document and dataset ingestion
     @router.post("/documents")
     async def ingest_document(req: IngestDocumentRequest) -> dict[str, Any]:
-        """Ingest custom document or dataset records with Zanzibar viewer access controls."""
+        """Ingest custom document or dataset records into the local vector index."""
         pipeline = state.retrieval_pipeline
         if pipeline is None:
             from aegismind_core.bootstrap import init_default_core_state
 
             seeded = await init_default_core_state()
             state.retrieval_pipeline = seeded.retrieval_pipeline
-            state.authz = seeded.authz
             state.vector_store = seeded.vector_store
             state.connectors = seeded.connectors
             state.indexed_resources = seeded.indexed_resources
@@ -691,7 +683,6 @@ def create_routes(state: CoreState) -> APIRouter:
             paragraphs = [req.content.strip()]
 
         chunks: list[Chunk] = []
-        tuples: list[RelationshipTuple] = []
 
         for idx, text_block in enumerate(paragraphs, start=1):
             embedding = await pipeline.embedder.embed_query(text_block)
@@ -716,17 +707,7 @@ def create_routes(state: CoreState) -> APIRouter:
 
         await state.vector_store.upsert(chunks)
 
-        for u in req.allowed_users:
-            tuples.append(
-                RelationshipTuple(
-                    resource=f"document:{doc_id}",
-                    relation="viewer",
-                    subject=f"user:{u}",
-                )
-            )
 
-        if state.authz:
-            await state.authz.write_tuples(tuples)
 
         resource_entry = {
             "id": doc_id,
@@ -758,7 +739,7 @@ def create_routes(state: CoreState) -> APIRouter:
     # 10. DELETE /api/v1/documents/{document_id}: Delete dataset and revoke permissions
     @router.delete("/documents/{document_id}")
     async def delete_document(document_id: str) -> dict[str, str]:
-        """Delete an ingested dataset and revoke its Zanzibar permissions immediately."""
+        """Delete an ingested dataset from local index."""
         if hasattr(state.vector_store, "_chunks"):
             matching_ids = [
                 cid
@@ -768,14 +749,7 @@ def create_routes(state: CoreState) -> APIRouter:
             if matching_ids:
                 await state.vector_store.delete(matching_ids)
 
-        if state.authz and hasattr(state.authz, "_tuples"):
-            to_delete = [
-                RelationshipTuple(resource=res, relation=rel, subject=sub)
-                for res, rel, sub in state.authz._tuples
-                if res == f"document:{document_id}"
-            ]
-            if to_delete:
-                await state.authz.delete_tuples(to_delete)
+
 
         state.indexed_resources = [r for r in state.indexed_resources if r.get("id") != document_id]
 
@@ -854,7 +828,7 @@ def create_routes(state: CoreState) -> APIRouter:
     # 15. GET /api/v1/readiness: Deep readiness probe
     @router.get("/readiness", tags=["health"])
     async def readiness_probe(response: Response) -> dict[str, Any]:
-        """Deep readiness probe: checks backing store, SpiceDB, TEI, and LLM."""
+        """Deep readiness probe: checks vector store, embedder, and LLM."""
         is_ready, checks = await perform_readiness_check(state)
         if not is_ready:
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -1078,7 +1052,7 @@ async def perform_readiness_check(state: CoreState) -> tuple[bool, dict[str, str
     checks: dict[str, str] = {}
     all_ok = True
 
-    # 1. PostgreSQL vector store ping
+    # 1. Vector store ping / healthcheck
     try:
         vs = state.vector_store
         if hasattr(vs, "db_pool") and vs.db_pool is not None:
@@ -1089,40 +1063,14 @@ async def perform_readiness_check(state: CoreState) -> tuple[bool, dict[str, str
             await vs.ping()
             checks["vector_store"] = "ok"
         else:
+            await vs.query_dense([0.0], top_k=1)
             checks["vector_store"] = "ok (in-memory)"
     except Exception as exc:
         logger.warning("Readiness probe: vector store check failed: %s", exc)
         checks["vector_store"] = f"error: {exc}"
         all_ok = False
 
-    # 2. SpiceDB bulk_check or check_permission on sentinel resource
-    try:
-        az = state.authz
-        if az is not None:
-            if hasattr(az, "bulk_check"):
-                sentinel_req = CheckRequest(
-                    resource="resource:system#sentinel",
-                    permission="viewer",
-                    subject="user:healthcheck",
-                )
-                await az.bulk_check([sentinel_req])
-                checks["authz"] = "ok"
-            elif hasattr(az, "check_permission"):
-                sentinel_principal = Principal(id="healthcheck", type="user")
-                await az.check_permission(
-                    subject=sentinel_principal,
-                    relation="viewer",
-                    resource="resource:system#sentinel",
-                )
-                checks["authz"] = "ok"
-            else:
-                checks["authz"] = "ok (adapter)"
-        else:
-            checks["authz"] = "disabled"
-    except Exception as exc:
-        logger.warning("Readiness probe: SpiceDB check failed: %s", exc)
-        checks["authz"] = f"error: {exc}"
-        all_ok = False
+
 
     # 3. TEI embedder ping
     try:

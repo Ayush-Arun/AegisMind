@@ -18,7 +18,7 @@ class IngestionSummary(BaseModel):
     chunks_indexed: int = Field(default=0, description="Total chunks indexed into vector store")
     tuples_written: int = Field(
         default=0,
-        description="Total Zanzibar relationship tuples written to Authz",
+        description="Total relationship tuples written to storage",
     )
     errors: list[str] = Field(default_factory=list, description="Non-fatal warning or error logs")
 
@@ -46,7 +46,7 @@ class IngestionPipelinePort(Protocol):
     """Port for executing the end-to-end ingestion and indexing pipeline."""
 
     async def ingest_records(self, records: list[Record]) -> IngestionSummary:
-        """Ingest a batch of records through parsing, chunking, embedding, and authz."""
+        """Ingest a batch of records through parsing, chunking, and embedding."""
         ...
 
 

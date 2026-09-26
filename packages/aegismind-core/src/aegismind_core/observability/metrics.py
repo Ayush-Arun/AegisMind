@@ -16,25 +16,25 @@ logger = logging.getLogger(__name__)
 # Prometheus metrics definitions
 AUTHZ_CHUNKS_EVALUATED = Counter(
     "aegismind_authz_chunks_evaluated_total",
-    "Total candidate chunks evaluated against Zanzibar ReBAC policies per tenant",
+    "Total candidate chunks evaluated per tenant",
     ["tenant_id"],
 )
 
 AUTHZ_CHUNKS_DENIED = Counter(
     "aegismind_authz_chunks_denied_total",
-    "Total candidate chunks denied by Zanzibar ReBAC authorization per tenant",
+    "Total candidate chunks denied per tenant",
     ["tenant_id"],
 )
 
 AUTHZ_DENY_RATE = Gauge(
     "aegismind_authz_deny_rate",
-    "Instantaneous ratio of candidate chunks denied by Zanzibar ReBAC per tenant",
+    "Instantaneous ratio of candidate chunks denied per tenant",
     ["tenant_id"],
 )
 
 OVERFETCH_EFFECTIVENESS = Gauge(
     "aegismind_overfetch_effectiveness",
-    "Ratio of chunks passing Zanzibar ReBAC relative to total candidates evaluated",
+    "Ratio of chunks passing relative to total candidates evaluated",
     ["tenant_id"],
 )
 

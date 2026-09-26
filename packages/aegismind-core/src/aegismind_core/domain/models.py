@@ -61,18 +61,18 @@ class RetrievalQuery(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     query_text: str = Field(..., description="Text query submitted by user")
-    user_id: str = Field(..., description="Identity of caller for Zanzibar checks")
+    user_id: str = Field(..., description="Identity of caller for query execution")
     tenant_id: str | None = Field(default=None, description="Optional tenant isolation scope")
     top_k: int = Field(default=5, ge=1, description="Desired final number of relevant chunks")
     overfetch_factor: float = Field(
         default=4.0,
         ge=3.0,
         le=5.0,
-        description="Candidate multiplier between 3 and 5 for permission filtering",
+        description="Candidate multiplier between 3 and 5 for candidate retrieval",
     )
     consistency: ConsistencyToken = Field(
         default_factory=ConsistencyToken,
-        description="Zanzibar consistency token with at_least_as_fresh default",
+        description="Consistency token with at_least_as_fresh default",
     )
     metadata_filter: dict[str, Any] | None = Field(
         default=None,

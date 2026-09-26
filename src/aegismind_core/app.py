@@ -49,7 +49,6 @@ def create_app(state: CoreState | None = None) -> FastAPI:
 
                 seeded_state = await init_default_core_state()
                 app_state.retrieval_pipeline = seeded_state.retrieval_pipeline
-                app_state.authz = seeded_state.authz
                 app_state.vector_store = seeded_state.vector_store
                 app_state.connectors = seeded_state.connectors
                 app_state.indexed_resources = seeded_state.indexed_resources
