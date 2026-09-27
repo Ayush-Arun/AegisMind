@@ -10,6 +10,9 @@ from aegismind_types import ACL, Chunk
 
 from aegismind_core.registry import list_adapters, resolve_adapter
 from aegismind_core.routes import CoreState
+from aegismind_graph.engine import KnowledgeGraphEngine
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -198,5 +201,23 @@ async def init_default_core_state() -> CoreState:
     indexed = await seed_initial_knowledge(vector_store, embedder)
     state.indexed_resources = indexed
     state.connectors = discover_connectors()
+
+    # Seed knowledge graph
+    try:
+        from aegismind_graph.models import KnowledgeNode, KnowledgeEdge
+
+        graph = state.graph_engine
+        if graph.get_stats()["total_nodes"] == 0:
+            alice = KnowledgeNode(id="person:alice", entity_type="person", name="Alice", properties={"role": "Engineering Lead"})
+            bob = KnowledgeNode(id="person:bob", entity_type="person", name="Bob", properties={"role": "Security Architect"})
+            alpha = KnowledgeNode(id="project:alpha", entity_type="project", name="Project Alpha", properties={"status": "active"})
+            graph.add_node(alice)
+            graph.add_node(bob)
+            graph.add_node(alpha)
+            graph.add_edge(KnowledgeEdge(source="person:alice", target="project:alpha", relation="leads"))
+            graph.add_edge(KnowledgeEdge(source="person:bob", target="project:alpha", relation="secures"))
+            logger.info("Seeded default knowledge graph")
+    except Exception as exc:
+        logger.warning("Could not seed graph: %s", exc)
 
     return state

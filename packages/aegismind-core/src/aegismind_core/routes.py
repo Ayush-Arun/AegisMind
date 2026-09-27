@@ -37,9 +37,11 @@ from aegismind_core.agent import (
     SovereignAgentLoop,
     SystemFileReaderAdapter,
 )
+from aegismind_core.approval import ApprovalGate
 from aegismind_core.budgeting import apply_context_budget
 from aegismind_core.observability import trace_span
 from aegismind_core.ports.llm import LLMPort
+from aegismind_graph.engine import KnowledgeGraphEngine
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +208,10 @@ class CoreState:
         self.audit_log: list[AuditLogEntry] = []
         self.indexed_resources: list[dict[str, Any]] = []
         self.feedback_entries: list[FeedbackEntry] = []
+
+        # Knowledge graph and approval gate
+        self.graph_engine = KnowledgeGraphEngine(graph_path="./storage/graph/graph.json")
+        self.approval_gate = ApprovalGate(approval_log_path="./storage/approval/approvals.json")
 
     def record_audit(
         self,
@@ -1043,6 +1049,76 @@ def create_routes(state: CoreState) -> APIRouter:
             e.model_dump() for e in reversed(state.audit_log) if e.event_type == "agent_tool"
         ]
         return agent_entries[:limit]
+
+    # 17. GET /api/v1/graph/nodes: Query knowledge graph
+    @router.get("/graph/nodes", tags=["graph"])
+    async def graph_nodes(
+        query: str | None = Query(None),
+        entity_type: str | None = Query(None),
+        limit: int = Query(20, ge=1, le=100),
+    ) -> dict[str, Any]:
+        result = state.graph_engine.query(query=query, entity_type=entity_type, limit=limit)
+        return {"nodes": [n.model_dump() for n in result.nodes], "edges": [e.model_dump() for e in result.edges], "total_count": result.total_count}
+
+    @router.get("/graph/edges", tags=["graph"])
+    async def graph_edges(limit: int = Query(50, ge=1, le=100)) -> dict[str, Any]:
+        edges = state.graph_engine._edges[-limit:] if limit > 0 else state.graph_engine._edges
+        return {"nodes": [], "edges": [e.model_dump() for e in edges], "total_count": len(edges)}
+
+    @router.get("/graph/stats", tags=["graph"])
+    async def graph_stats() -> dict[str, Any]:
+        return state.graph_engine.get_stats()
+
+    @router.get("/graph/query", tags=["graph"])
+    async def graph_query(
+        query: str | None = Query(None),
+        entity_type: str | None = Query(None),
+        node_id: str | None = Query(None),
+        limit: int = Query(20, ge=1, le=100),
+    ) -> dict[str, Any]:
+        result = state.graph_engine.query(query=query, entity_type=entity_type, node_id=node_id, limit=limit)
+        return {"nodes": [n.model_dump() for n in result.nodes], "edges": [e.model_dump() for e in result.edges], "total_count": result.total_count}
+
+    # 18. POST /api/v1/approval/propose
+    @router.post("/approval/propose", tags=["approval"])
+    async def propose_action(
+        tool_name: str,
+        arguments: dict[str, Any],
+        reasoning: str,
+        risk_level: str = "read",
+    ) -> dict[str, str]:
+        proposal = state.approval_gate.propose(tool_name=tool_name, arguments=arguments, reasoning=reasoning, risk_level=risk_level)
+        return {"id": proposal.id, "status": proposal.status.value}
+
+    # 19. GET /api/v1/approval/pending
+    @router.get("/approval/pending", tags=["approval"])
+    async def pending_approvals() -> dict[str, Any]:
+        pending = state.approval_gate.get_pending()
+        return {
+            "pending_actions": [
+                {"proposal": p.proposal.model_dump(), "wait_seconds": p.wait_seconds, "summary": p.summary}
+                for p in pending
+            ],
+            "total": len(pending),
+        }
+
+    # 20. POST /api/v1/approval/decide
+    @router.post("/approval/decide", tags=["approval"])
+    async def decide_approval(
+        proposal_id: str,
+        approved: bool,
+        reason: str = "",
+        reviewed_by: str = "user",
+    ) -> dict[str, str]:
+        from aegismind_approval.models import ApprovalDecision
+        decision = ApprovalDecision(proposal_id=proposal_id, approved=approved, reason=reason, reviewed_by=reviewed_by)
+        result = state.approval_gate.decide(decision)
+        return {"status": "approved" if result else "rejected", "proposal_id": proposal_id}
+
+    # 21. GET /api/v1/approval/stats
+    @router.get("/approval/stats", tags=["approval"])
+    async def approval_stats() -> dict[str, Any]:
+        return state.approval_gate.get_stats()
 
     return router
 

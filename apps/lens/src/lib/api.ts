@@ -626,3 +626,143 @@ export async function listAgentTools(): Promise<AgentToolEvent[]> {
   }
 }
 
+// --- Knowledge Graph API ---
+
+export interface GraphNode {
+  id: string;
+  entity_type: string;
+  name: string;
+  properties: Record<string, unknown>;
+  connections: string[];
+  created_at: string;
+  source_query?: string | null;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  relation: string;
+  confidence: number;
+  timestamp: string;
+}
+
+export interface GraphStats {
+  total_nodes: number;
+  total_edges: number;
+  node_types: Record<string, number>;
+}
+
+export interface GraphQueryResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  total_count: number;
+}
+
+export interface PendingActionData {
+  proposal: {
+    id: string;
+    tool_name: string;
+    arguments: Record<string, unknown>;
+    reasoning: string;
+    risk_level: string;
+    status: string;
+    created_at: string;
+  };
+  wait_seconds: number;
+  summary: string;
+}
+
+export async function listGraphNodes(): Promise<GraphQueryResponse> {
+  try {
+    const res = await fetch(`${API_BASE}/graph/nodes`);
+    if (!res.ok) return { nodes: [], edges: [], total_count: 0 };
+    const data = await res.json();
+    return data as GraphQueryResponse;
+  } catch {
+    return { nodes: [], edges: [], total_count: 0 };
+  }
+}
+
+export async function listGraphEdges(): Promise<GraphQueryResponse> {
+  try {
+    const res = await fetch(`${API_BASE}/graph/edges`);
+    if (!res.ok) return { nodes: [], edges: [], total_count: 0 };
+    const data = await res.json();
+    return data as GraphQueryResponse;
+  } catch {
+    return { nodes: [], edges: [], total_count: 0 };
+  }
+}
+
+export async function getGraphStats(): Promise<GraphStats> {
+  try {
+    const res = await fetch(`${API_BASE}/graph/stats`);
+    if (!res.ok) return { total_nodes: 0, total_edges: 0, node_types: {} };
+    const data = await res.json();
+    return data as GraphStats;
+  } catch {
+    return { total_nodes: 0, total_edges: 0, node_types: {} };
+  }
+}
+
+export async function queryGraph(params: { query?: string; entity_type?: string; limit?: number }): Promise<GraphQueryResponse> {
+  try {
+    const url = new URL(`${API_BASE}/graph/query`);
+    if (params.query) url.searchParams.set("query", params.query);
+    if (params.entity_type) url.searchParams.set("entity_type", params.entity_type);
+    if (params.limit) url.searchParams.set("limit", String(params.limit));
+    const res = await fetch(url);
+    if (!res.ok) return { nodes: [], edges: [], total_count: 0 };
+    const data = await res.json();
+    return data as GraphQueryResponse;
+  } catch {
+    return { nodes: [], edges: [], total_count: 0 };
+  }
+}
+
+// --- Approval Gate API ---
+
+export async function getPendingActions(): Promise<{ pending_actions: PendingActionData[]; total: number }> {
+  try {
+    const res = await fetch(`${API_BASE}/approval/pending`);
+    if (!res.ok) return { pending_actions: [], total: 0 };
+    const data = await res.json();
+    return data as { pending_actions: PendingActionData[]; total: number };
+  } catch {
+    return { pending_actions: [], total: 0 };
+  }
+}
+
+export async function decideAction(params: { proposal_id: string; approved: boolean; reason: string; reviewed_by: string }): Promise<{ status: string; proposal_id: string }> {
+  const res = await fetch(`${API_BASE}/approval/decide`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(`Decision failed: ${res.statusText}`);
+  const data = await res.json();
+  return data as { status: string; proposal_id: string };
+}
+
+export async function getApprovalStats(): Promise<{ total: number; pending: number; approved: number; rejected: number }> {
+  try {
+    const res = await fetch(`${API_BASE}/approval/stats`);
+    if (!res.ok) return { total: 0, pending: 0, approved: 0, rejected: 0 };
+    const data = await res.json();
+    return data as { total: number; pending: number; approved: number; rejected: number };
+  } catch {
+    return { total: 0, pending: 0, approved: 0, rejected: 0 };
+  }
+}
+
+export async function proposeAction(params: { tool_name: string; arguments: Record<string, unknown>; reasoning: string; risk_level: string }): Promise<{ id: string; status: string }> {
+  const res = await fetch(`${API_BASE}/approval/propose`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(`Proposal failed: ${res.statusText}`);
+  const data = await res.json();
+  return data as { id: string; status: string };
+}
+

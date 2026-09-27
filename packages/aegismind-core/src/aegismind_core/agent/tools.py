@@ -35,6 +35,8 @@ ALLOWED_COMMAND_PREFIXES: list[list[str]] = [
 ]
 
 
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg", ".ico", ".raw", ".cr2", ".nef", ".arw"}
+
 class LocalKnowledgeSearchAdapter(LocalKnowledgeSearchPort):
     """Adapter for searching the local vector index."""
 
@@ -45,6 +47,10 @@ class LocalKnowledgeSearchAdapter(LocalKnowledgeSearchPort):
     ) -> None:
         self.vector_store = vector_store
         self.embedder = embedder
+
+    def _is_image_path(self, path: str) -> bool:
+        ext = Path(path).suffix.lower()
+        return ext in IMAGE_EXTENSIONS
 
     async def search(self, query: str, top_k: int = 5) -> str:
         clean_q = query.strip()
@@ -61,6 +67,8 @@ class LocalKnowledgeSearchAdapter(LocalKnowledgeSearchPort):
                 chunk = sc.chunk
                 title = chunk.metadata.get("title") or chunk.document_id
                 path = chunk.metadata.get("path") or chunk.metadata.get("uri") or "unknown"
+                if self._is_image_path(path):
+                    continue
                 lines.append(f"{idx}. [{title}] (Score: {sc.score:.2f}, Source: {path})")
                 lines.append(f"   {chunk.content.strip()}")
             return "\n".join(lines)
@@ -96,6 +104,13 @@ class SystemFileReaderAdapter(SystemFileReaderPort):
 
         if not target.exists():
             return f"FILE_NOT_FOUND: File '{target}' does not exist."
+
+        if target.suffix.lower() in IMAGE_EXTENSIONS:
+            return (
+                f"IMAGE_UNSUPPORTED: Cannot read '{target.name}' — image files are not "
+                f"supported by the local language model. Upload or reference the image "
+                f"description instead."
+            )
 
         if target.is_dir():
             return f"IS_DIRECTORY: Path '{target}' is a directory, not a readable file."

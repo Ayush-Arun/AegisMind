@@ -48,6 +48,16 @@ DEFAULT_IGNORE_PATTERNS: list[str] = [
     "*.tmp",
     "*.swp",
     "*.lock",
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.bmp",
+    "*.webp",
+    "*.tiff",
+    "*.svg",
+    "*.ico",
+    "*.raw",
 ]
 
 SUPPORTED_TEXT_EXTENSIONS: set[str] = {

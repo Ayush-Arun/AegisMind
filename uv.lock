@@ -8,9 +8,11 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "aegismind-approval",
     "aegismind-connector-local-filesystem",
     "aegismind-connector-sdk",
     "aegismind-core",
+    "aegismind-graph",
     "aegismind-identity",
     "aegismind-infra",
     "aegismind-ingestion",
@@ -18,6 +20,21 @@ members = [
     "aegismind-retrieval",
     "aegismind-types",
     "aegismind-workspace",
+]
+
+[[package]]
+name = "aegismind-approval"
+version = "0.1.0"
+source = { editable = "packages/aegismind-approval" }
+dependencies = [
+    { name = "aegismind-types" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aegismind-types", editable = "packages/aegismind-types" },
+    { name = "pydantic", specifier = ">=2.10" },
 ]
 
 [[package]]
@@ -63,7 +80,9 @@ name = "aegismind-core"
 version = "0.0.1"
 source = { editable = "packages/aegismind-core" }
 dependencies = [
+    { name = "aegismind-approval" },
     { name = "aegismind-connector-sdk" },
+    { name = "aegismind-graph" },
     { name = "aegismind-identity" },
     { name = "aegismind-infra" },
     { name = "aegismind-ingestion" },
@@ -81,7 +100,9 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aegismind-approval", editable = "packages/aegismind-approval" },
     { name = "aegismind-connector-sdk", editable = "packages/aegismind-connector-sdk" },
+    { name = "aegismind-graph", editable = "packages/aegismind-graph" },
     { name = "aegismind-identity", editable = "packages/aegismind-identity" },
     { name = "aegismind-infra", editable = "packages/aegismind-infra" },
     { name = "aegismind-ingestion", editable = "packages/aegismind-ingestion" },
@@ -96,6 +117,17 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
+
+[[package]]
+name = "aegismind-graph"
+version = "0.1.0"
+source = { editable = "packages/aegismind-graph" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.10" }]
 
 [[package]]
 name = "aegismind-identity"

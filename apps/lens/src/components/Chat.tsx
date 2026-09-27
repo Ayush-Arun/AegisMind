@@ -33,6 +33,15 @@ interface ChatProps {
   onClearInitialQuery?: () => void;
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export function Chat({
   currentTenantId,
   currentUserId,
@@ -241,7 +250,7 @@ export function Chat({
               >
                 {/* Message Body */}
                 <div className="whitespace-pre-wrap leading-relaxed">
-                  {msg.content}
+                  {escapeHtml(msg.content)}
                 </div>
 
                 {/* Interactive Citations list */}
