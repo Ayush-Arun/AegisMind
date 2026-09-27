@@ -40,15 +40,9 @@ function escapeHtml(text: string): string {
     .replace(/\u200b/g, "")
     .replace(/\u200c/g, "")
     .replace(/\u200d/g, "")
-    .replace(/\u201c/g, '"')
-    .replace(/\u201d/g, '"')
-    .replace(/\u2018/g, "'")
-    .replace(/\u2019/g, "'")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/>/g, "&gt;");
 }
 
 export function Chat({
