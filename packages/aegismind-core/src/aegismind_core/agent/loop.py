@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -17,6 +18,7 @@ from aegismind_core.agent.ports import (
     SystemFileReaderPort,
     ToolActionResult,
 )
+from aegismind_core.agent.tools import IMAGE_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +211,33 @@ class SovereignAgentLoop:
 
         return action_result
 
+    @staticmethod
+    def _filter_image_content(text: str) -> str:
+        """Filter out image-related content from tool results."""
+        lines = []
+        for line in text.split("\n"):
+            if IMAGE_EXTENSIONS and any(ext in line.lower() for ext in IMAGE_EXTENSIONS):
+                continue
+            lines.append(line)
+        return "\n".join(lines) if lines else text
+
+    @staticmethod
+    def _sanitize_text(text: str) -> str:
+        """Remove ANSI escape codes, control characters, and excessive Unicode."""
+        # Remove ANSI escape codes
+        text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+        # Remove control characters except newlines, tabs, carriage returns
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+        # Normalize excessive Unicode (replace common problematic chars)
+        text = text.replace("\u200b", "")  # Zero-width space
+        text = text.replace("\u200c", "")  # Zero-width non-joiner
+        text = text.replace("\u200d", "")  # Zero-width joiner
+        text = text.replace("\ufeff", "")  # BOM
+        # Replace special quote characters with ASCII
+        text = text.replace("\u201c", '"').replace("\u201d", '"')
+        text = text.replace("\u2018", "'").replace("\u2019", "'")
+        return text
+
     async def _call_model(
         self,
         messages: list[dict[str, Any]],
@@ -308,11 +337,14 @@ class SovereignAgentLoop:
                 actions_taken.append(action_result)
                 total_calls += 1
 
+                # Filter out image-related content from tool results
+                filtered_result = self._filter_image_content(action_result.result)
+
                 # Feed tool result back into conversation history
                 messages.append(
                     {
                         "role": "tool",
-                        "content": action_result.result,
+                        "content": filtered_result,
                         "name": tool_name,
                     }
                 )
@@ -330,6 +362,7 @@ class SovereignAgentLoop:
         try:
             final_msg = await self._call_model(messages, [])
             final_text = final_msg.get("content", "").strip()
+            final_text = self._sanitize_text(final_text)
         except Exception:
             final_text = (
                 f"Agent executed {total_calls} actions. Summary of findings:\n"

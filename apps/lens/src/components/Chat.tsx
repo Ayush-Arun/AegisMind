@@ -35,6 +35,15 @@ interface ChatProps {
 
 function escapeHtml(text: string): string {
   return text
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "")
+    .replace(/\u200b/g, "")
+    .replace(/\u200c/g, "")
+    .replace(/\u200d/g, "")
+    .replace(/\u201c/g, '"')
+    .replace(/\u201d/g, '"')
+    .replace(/\u2018/g, "'")
+    .replace(/\u2019/g, "'")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

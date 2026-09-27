@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -488,8 +489,10 @@ def create_routes(state: CoreState) -> APIRouter:
                     model=model,
                 ):
                     llm_streamed = True
-                    streamed_response += token
-                    data = json.dumps({"token": token})
+                    sanitized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", token)
+                    sanitized = sanitized.replace("\u200b", "").replace("\u200c", "").replace("\u200d", "")
+                    streamed_response += sanitized
+                    data = json.dumps({"token": sanitized})
                     yield f"event: token\ndata: {data}\n\n"
             except Exception as exc:
                 logger.debug("LLM streaming skipped: %s", exc)
