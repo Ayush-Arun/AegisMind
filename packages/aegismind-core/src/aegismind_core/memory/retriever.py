@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
 from aegismind_core.memory.store import MemoryStore
@@ -62,7 +61,10 @@ class MemoryRetriever:
         """Remove lines containing image file paths."""
         lines = []
         for line in text.split("\n"):
-            if any(ext in line.lower() for ext in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg"}):
+            if any(
+                ext in line.lower()
+                for ext in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg"}
+            ):
                 continue
             lines.append(line)
         return "\n".join(lines) if lines else text

@@ -8,7 +8,7 @@ from aegismind_mcp_bridge import MCPBridgeServer, MCPClient, MCPTool, MCPToolCal
 from aegismind_retrieval.adapters_model import MockEmbedderAdapter, MockRerankerAdapter
 from aegismind_retrieval.adapters_vector import MemoryVectorStoreAdapter
 from aegismind_retrieval.pipeline import RetrievalPipeline
-from aegismind_types import Chunk, Principal, TokenConsistency
+from aegismind_types import Chunk
 
 from aegismind_core.app import create_app
 from aegismind_core.routes import CoreState

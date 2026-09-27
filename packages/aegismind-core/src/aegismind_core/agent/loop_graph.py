@@ -4,7 +4,6 @@ import logging
 from typing import Any
 
 from aegismind_graph.engine import KnowledgeGraphEngine
-from aegismind_graph.models import KnowledgeNode
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +11,9 @@ logger = logging.getLogger(__name__)
 class GraphAwareAgentMixin:
     """Mixin that adds knowledge graph context to the sovereign agent loop."""
 
-    def __init__(self, graph_engine: KnowledgeGraphEngine | None = None, *args, **kwargs):
+    def __init__(
+        self, graph_engine: KnowledgeGraphEngine | None = None, *args: Any, **kwargs: Any
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.graph_engine = graph_engine
 
@@ -35,11 +36,10 @@ class GraphAwareAgentMixin:
                     # Add connections
                     node = self.graph_engine.get_node(entity.id)
                     if node and node.connections:
-                        connections = [
-                            self.graph_engine.get_node(cid)
-                            for cid in node.connections[:3]
-                            if self.graph_engine.get_node(cid)
+                        raw_connections = [
+                            self.graph_engine.get_node(cid) for cid in node.connections[:3]
                         ]
+                        connections = [c for c in raw_connections if c is not None]
                         if connections:
                             conn_names = [c.name for c in connections]
                             context_parts.append(f"    Connected to: {', '.join(conn_names)}")
@@ -62,4 +62,7 @@ class GraphAwareAgentMixin:
     async def run_with_graph(self, prompt: str, **kwargs: Any) -> Any:
         """Run the agent loop with graph-enriched prompt."""
         enriched_prompt = self.enrich_prompt_with_graph(prompt)
-        return await self.run(prompt=enriched_prompt, **kwargs)
+        run_fn = getattr(self, "run", None)
+        if callable(run_fn):
+            return await run_fn(prompt=enriched_prompt, **kwargs)
+        raise NotImplementedError("Underlying agent class does not implement run()")

@@ -147,6 +147,12 @@ class OllamaAdapter:
         """Stream completion tokens from Ollama."""
         chosen_model = self._resolve_generative_model(model)
         base_url = await self._resolve_base_url()
+        logger.info(
+            "Streaming from Ollama: model=%s, base_url=%s, prompt_len=%d",
+            chosen_model,
+            base_url,
+            len(prompt),
+        )
 
         payload: dict[str, Any] = {
             "model": chosen_model,

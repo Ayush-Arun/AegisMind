@@ -35,7 +35,22 @@ ALLOWED_COMMAND_PREFIXES: list[list[str]] = [
 ]
 
 
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg", ".ico", ".raw", ".cr2", ".nef", ".arw"}
+IMAGE_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".tiff",
+    ".svg",
+    ".ico",
+    ".raw",
+    ".cr2",
+    ".nef",
+    ".arw",
+}
+
 
 class LocalKnowledgeSearchAdapter(LocalKnowledgeSearchPort):
     """Adapter for searching the local vector index."""
@@ -107,7 +122,7 @@ class SystemFileReaderAdapter(SystemFileReaderPort):
 
         if target.suffix.lower() in IMAGE_EXTENSIONS:
             return (
-                f"IMAGE_UNSUPPORTED: Cannot read '{target.name}' — image files are not "
+                f"IMAGE_UNSUPPORTED: Cannot read '{target.name}': image files are not "
                 f"supported by the local language model. Upload or reference the image "
                 f"description instead."
             )

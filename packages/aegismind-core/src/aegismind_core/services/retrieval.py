@@ -113,7 +113,7 @@ class RetrievalService:
                 top_k=query.top_k,
             )
         except TypeError:
-            reranked = await self._reranker.rerank(
+            reranked = await self._reranker.rerank(  # type: ignore[call-arg]
                 query=query.query_text,
                 candidates=candidates,
                 top_n=query.top_k,
