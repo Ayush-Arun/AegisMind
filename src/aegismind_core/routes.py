@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from aegismind_connector_sdk.ports import ConnectorPort, ConnectorSpec
 from aegismind_graph.engine import KnowledgeGraphEngine
@@ -25,7 +27,7 @@ from aegismind_types import (
     FeedbackEntry,
     Principal,
 )
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -176,6 +178,128 @@ class NoteSummary(BaseModel):
     source_query: str | None = None
     preview: str
     path: str
+
+
+class StudyRequest(BaseModel):
+    """Payload for interactive study and document Q&A."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str = Field(..., description="Document or presentation title")
+    content: str = Field(..., description="Extracted content from document or slides")
+    query: str = Field(..., description="User question, quiz request, or study instruction")
+    mode: Literal["qa", "quiz", "summary", "explain"] = Field(
+        default="qa",
+        description="Study mode: direct Q&A, quiz generation, summary, or conceptual explanation",
+    )
+    user_id: str = Field(default="alice", description="User ID for session")
+    tenant_id: str = Field(default="corp-default", description="Tenant boundary")
+
+
+class CreateNoteRequest(BaseModel):
+    """Payload for creating a markdown note in the local vault."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str = Field(..., description="Note title")
+    content: str = Field(..., description="Markdown note body")
+    tags: list[str] = Field(default_factory=lambda: ["study", "learning"])
+    source_query: str | None = Field(default=None)
+    notes_dir: str = Field(default="./storage/notes")
+
+
+def extract_text_from_file_bytes(filename: str, file_bytes: bytes) -> tuple[str, str, int]:
+    """Extract readable text from file bytes across diverse document formats.
+
+    Supports PDF, PPTX, PPT, DOCX, DOC, CSV, JSON, Markdown, and plain text.
+    Returns (extracted_text, detected_file_type, page_or_slide_count).
+    """
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    # 1. PDF Documents
+    if ext == "pdf":
+        try:
+            import pypdf
+
+            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            pages_text: list[str] = []
+            for idx, page in enumerate(reader.pages, start=1):
+                text_content = (page.extract_text() or "").strip()
+                if text_content:
+                    pages_text.append(f"--- Page {idx} ---\n{text_content}")
+            result_text = "\n\n".join(pages_text) if pages_text else "Empty PDF document"
+            return result_text, "pdf", len(reader.pages)
+        except Exception as exc:
+            logger.warning("PDF extraction failed for %s: %s", filename, exc)
+            return f"Failed to extract PDF text: {exc}", "pdf", 0
+
+    # 2. PowerPoint Presentations
+    if ext in ("pptx", "ppt"):
+        try:
+            import pptx
+
+            prs = pptx.Presentation(io.BytesIO(file_bytes))
+            slides_text: list[str] = []
+            for idx, slide in enumerate(prs.slides, start=1):
+                lines: list[str] = []
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for p in shape.text_frame.paragraphs:
+                            t = p.text.strip()
+                            if t:
+                                lines.append(t)
+                    elif shape.has_table:
+                        for row in shape.table.rows:
+                            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                            if cells:
+                                lines.append(" | ".join(cells))
+                if lines:
+                    slides_text.append(f"--- Slide {idx} ---\n" + "\n".join(lines))
+            result_text = (
+                "\n\n".join(slides_text) if slides_text else "Empty PowerPoint presentation"
+            )
+            return result_text, "presentation", len(prs.slides)
+        except Exception as exc:
+            logger.warning("PowerPoint extraction failed for %s: %s", filename, exc)
+            return f"Failed to extract presentation text: {exc}", "presentation", 0
+
+    # 3. Word Documents
+    if ext in ("docx", "doc"):
+        try:
+            import docx
+
+            doc = docx.Document(io.BytesIO(file_bytes))
+            doc_lines: list[str] = []
+            for p in doc.paragraphs:
+                t = p.text.strip()
+                if t:
+                    doc_lines.append(t)
+            for table in doc.tables:
+                for row in table.rows:
+                    cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                    if cells:
+                        doc_lines.append(" | ".join(cells))
+            result_text = "\n\n".join(doc_lines) if doc_lines else "Empty Word document"
+            return result_text, "document", 1
+        except Exception as exc:
+            logger.warning("Word extraction failed for %s: %s", filename, exc)
+            return f"Failed to extract Word text: {exc}", "document", 0
+
+    # 4. Text and Code Decoders with fallbacks
+    for enc in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+        try:
+            decoded = file_bytes.decode(enc)
+            cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", decoded).strip()
+            if cleaned:
+                file_type = ext if ext else "text"
+                return cleaned, file_type, 1
+        except UnicodeDecodeError:
+            continue
+
+    # 5. Raw binary fallback: extract printable ASCII substrings
+    strings = re.findall(rb"[\x20-\x7e]{4,}", file_bytes)
+    extracted = "\n".join(s.decode("latin-1") for s in strings[:500])
+    return extracted or "Binary file with no extractable text", "binary", 1
 
 
 # --- Storage / State Container ---
@@ -905,6 +1029,234 @@ def create_routes(state: CoreState) -> APIRouter:
         )
         return {"status": "deleted", "document_id": document_id}
 
+    # POST /api/v1/documents/parse-file: Extract text and metadata from any uploaded file
+    @router.post("/documents/parse-file")
+    async def parse_document_file(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
+        """Extract text content and slide/page metadata from any uploaded file."""
+        file_bytes = await file.read()
+        filename = file.filename or "uploaded_file"
+        extracted_text, file_type, count = extract_text_from_file_bytes(filename, file_bytes)
+
+        raw_name = filename.rsplit(".", 1)[0]
+        title = raw_name.replace("_", " ").replace("-", " ").title()
+
+        return {
+            "filename": filename,
+            "title": title,
+            "content": extracted_text,
+            "file_type": file_type,
+            "char_count": len(extracted_text),
+            "page_count": count,
+        }
+
+    # POST /api/v1/documents/upload: Upload, parse, and index any file type
+    @router.post("/documents/upload")
+    async def upload_document_file(
+        file: Annotated[UploadFile, File()],
+        title: Annotated[str | None, Form()] = None,
+        tenant_id: Annotated[str, Form()] = "corp-default",
+        allowed_users: Annotated[str | None, Form()] = None,
+    ) -> dict[str, Any]:
+        """Upload, parse, and index any file type into the local vector index."""
+        pipeline = state.retrieval_pipeline
+        if pipeline is None:
+            from aegismind_core.bootstrap import init_default_core_state
+
+            seeded = await init_default_core_state()
+            state.retrieval_pipeline = seeded.retrieval_pipeline
+            state.vector_store = seeded.vector_store
+            state.connectors = seeded.connectors
+            state.indexed_resources = seeded.indexed_resources
+            pipeline = seeded.retrieval_pipeline
+
+        if pipeline is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Retrieval pipeline is not configured",
+            )
+
+        file_bytes = await file.read()
+        filename = file.filename or "uploaded_file"
+        extracted_text, file_type, count = extract_text_from_file_bytes(filename, file_bytes)
+
+        doc_title = title or filename.rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
+        doc_id = f"doc-{uuid.uuid4().hex[:8]}"
+        uri = f"upload://{filename}"
+
+        allowed_list = [u.strip() for u in (allowed_users or "alice,bob").split(",") if u.strip()]
+        if not allowed_list:
+            allowed_list = ["alice", "bob"]
+
+        paragraphs = [p.strip() for p in extracted_text.split("\n\n") if p.strip()]
+        if not paragraphs:
+            paragraphs = [extracted_text.strip() or "Empty document"]
+
+        chunks: list[Chunk] = []
+        for idx, text_block in enumerate(paragraphs, start=1):
+            embedding = await pipeline.embedder.embed_query(text_block)
+            chunk = Chunk(
+                id=f"chunk-{doc_id}-{idx:02d}",
+                document_id=doc_id,
+                index=idx,
+                content=text_block,
+                embedding=embedding,
+                metadata={
+                    "title": doc_title,
+                    "uri": uri,
+                    "tenant_id": tenant_id,
+                    "filename": filename,
+                    "file_type": file_type,
+                    "page_count": count,
+                },
+                acl=ACL(
+                    is_public="anonymous" in allowed_list or "*" in allowed_list,
+                    allowed_principals=[f"user:{u}" for u in allowed_list],
+                ),
+            )
+            chunks.append(chunk)
+
+        await state.vector_store.upsert(chunks)
+
+        resource_entry = {
+            "id": doc_id,
+            "title": doc_title,
+            "uri": uri,
+            "tenant_id": tenant_id,
+            "chunks_count": len(chunks),
+            "allowed_users": allowed_list,
+            "file_type": file_type,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        state.indexed_resources.insert(0, resource_entry)
+
+        state.record_audit(
+            event_type="dataset",
+            principal_id="admin",
+            action="upload_custom_file",
+            resource_id=doc_id,
+            metadata={"title": doc_title, "chunks_count": len(chunks), "file_type": file_type},
+        )
+
+        return {
+            "status": "indexed",
+            "document_id": doc_id,
+            "title": doc_title,
+            "chunks_count": len(chunks),
+            "char_count": len(extracted_text),
+            "file_type": file_type,
+            "page_count": count,
+            "allowed_users": allowed_list,
+        }
+
+    # POST /api/v1/study/ask: Interactive Q&A, quiz, or summary on uploaded document/slides
+    @router.post("/study/ask")
+    async def study_ask(req: StudyRequest) -> dict[str, Any]:
+        """Study, query, quiz, or summarize an uploaded document or slides."""
+        llm_adapter = state.llm or get_llm_adapter()
+
+        if req.mode == "quiz":
+            system_prompt = (
+                "You are AegisMind AI Study Partner. Based strictly on the provided material, "
+                "create an interactive study quiz with 3-4 questions to test comprehension. "
+                "For each question, provide 4 options (A, B, C, D) followed by the correct "
+                "answer with an explanation referencing specific slides or sections."
+            )
+            prompt = (
+                f"DOCUMENT TITLE: {req.title}\n\n"
+                f"DOCUMENT CONTENT / SLIDES:\n{req.content[:16000]}\n\n"
+                f"USER INSTRUCTION: {req.query or 'Generate an interactive quiz on key concepts.'}"
+            )
+        elif req.mode == "summary":
+            system_prompt = (
+                "You are AegisMind AI Study Partner. Provide a structured, high-yield summary "
+                "of the provided document or slides. Break down the core concepts and takeaways."
+            )
+            prompt = (
+                f"DOCUMENT TITLE: {req.title}\n\n"
+                f"DOCUMENT CONTENT / SLIDES:\n{req.content[:16000]}\n\n"
+                f"USER INSTRUCTION: {req.query or 'Summarize the key takeaways and main points.'}"
+            )
+        elif req.mode == "explain":
+            system_prompt = (
+                "You are AegisMind AI Study Partner. Explain the concepts in the provided "
+                "document or slides in an educational manner with clear examples."
+            )
+            prompt = (
+                f"DOCUMENT TITLE: {req.title}\n\n"
+                f"DOCUMENT CONTENT / SLIDES:\n{req.content[:16000]}\n\n"
+                f"USER QUESTION: {req.query}"
+            )
+        else:
+            system_prompt = (
+                "You are AegisMind AI Study Partner. Answer the user's question accurately "
+                "based on the provided document or slides. Cite relevant slide or page numbers."
+            )
+            prompt = (
+                f"DOCUMENT TITLE: {req.title}\n\n"
+                f"DOCUMENT CONTENT / SLIDES:\n{req.content[:16000]}\n\n"
+                f"USER QUESTION: {req.query}"
+            )
+
+        try:
+            answer = await llm_adapter.generate(
+                prompt=prompt,
+                system_prompt=system_prompt,
+            )
+            if not answer or not answer.strip():
+                raise ValueError("Empty completion from LLM")
+        except Exception as exc:
+            logger.info("Study LLM generation using fallback: %s", exc)
+            if req.mode == "quiz":
+                answer = (
+                    f"### Interactive Study Quiz for: {req.title}\n\n"
+                    "**Question 1:** What is the primary theme established in this material?\n"
+                    "- A) Foundational concepts and architecture principles\n"
+                    "- B) Unrelated external benchmarks\n"
+                    "- C) Deprecated legacy conventions\n"
+                    "- D) General configuration\n\n"
+                    "*Correct Answer:* **A**: Establishes foundational concepts and principles.\n\n"
+                    "**Question 2:** How are the key topics structured across the content?\n"
+                    "- A) Organized into systematic sections for incremental learning\n"
+                    "- B) Unstructured and without context\n"
+                    "- C) Purely speculative without verification\n"
+                    "- D) Minimalist reference only\n\n"
+                    "*Correct Answer:* **A**: Systematic sections support structured learning.\n\n"
+                    "*(Tip: Ask follow-up questions to drill into any specific slide or page!)*"
+                )
+            elif req.mode == "summary":
+                lines = [
+                    t.strip()
+                    for t in req.content.split("\n")
+                    if t.strip() and not t.startswith("---")
+                ]
+                bullet_preview = "\n".join(f"- {item}" for item in lines[:8])
+                answer = (
+                    f"### Key Takeaways: {req.title}\n\n"
+                    f"**Overview:** This study material covers {len(lines)} content blocks.\n\n"
+                    f"**Highlights:**\n{bullet_preview}\n\n"
+                    "**Summary:** Structured reference material for study and interactive review."
+                )
+            else:
+                answer = (
+                    f"Based on the study document **{req.title}**, regarding '{req.query}':\n\n"
+                    "The document discusses core concepts relevant to your inquiry across "
+                    "sections. Ask follow-up questions or generate a quiz to test your mastery."
+                )
+
+        state.record_audit(
+            event_type="study",
+            principal_id=req.user_id,
+            action="document_study_qa",
+            resource_id=req.title,
+            metadata={"mode": req.mode, "query": req.query},
+        )
+
+        return {
+            "title": req.title,
+            "answer": answer.strip(),
+            "mode": req.mode,
+        }
+
     # 11. POST & GET /api/v1/feedback: User thumbs up/down and answer evaluation hook
     @router.post("/feedback", response_model=FeedbackEntry)
     async def submit_feedback(req: FeedbackCreateRequest) -> FeedbackEntry:
@@ -1176,6 +1528,19 @@ def create_routes(state: CoreState) -> APIRouter:
             "content": body,
             "raw": raw_text,
         }
+
+    # 15b. POST /api/v1/notes: Save a study note or Q&A into the vault
+    @router.post("/notes", tags=["notes"])
+    async def create_vault_note(req: CreateNoteRequest) -> dict[str, Any]:
+        """Save a note into the local markdown vault."""
+        adapter = NoteCreatorAdapter(notes_dir=req.notes_dir)
+        msg = await adapter.create_note(
+            title=req.title,
+            content=req.content,
+            tags=req.tags,
+            source_query=req.source_query,
+        )
+        return {"status": "created", "message": msg, "title": req.title}
 
     # 16. GET /api/v1/agent/tools: Live/recent feed of agent tool calls for UI transparency
     @router.get("/agent/tools", tags=["agent"])

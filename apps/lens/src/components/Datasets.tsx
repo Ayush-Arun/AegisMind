@@ -14,6 +14,7 @@ import {
   deleteDocument,
   listIndexedResources,
   listModels,
+  parseFile,
   type ModelInfo,
   type ResourceItem,
 } from "@/lib/api";
@@ -49,6 +50,13 @@ export function Datasets({
   const [documentId, setDocumentId] = React.useState("");
   const [allowedUsers, setAllowedUsers] = React.useState<string[]>([currentUserId]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isParsingFile, setIsParsingFile] = React.useState(false);
+  const [uploadedFileInfo, setUploadedFileInfo] = React.useState<{
+    name: string;
+    type: string;
+    pageCount?: number;
+    charCount: number;
+  } | null>(null);
   const [feedback, setFeedback] = React.useState<{
     type: "success" | "error";
     message: string;
@@ -104,23 +112,75 @@ export function Datasets({
     });
   };
 
+  const processSelectedFile = async (file: File) => {
+    setIsParsingFile(true);
+    setFeedback(null);
+
+    const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+    const formattedTitle = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+    setTitle((prev) => prev || formattedTitle);
+
+    const isSimpleText = Boolean(file.name.match(/\.(txt|md|csv|json|log|yaml|yml|xml|tsv|sql)$/i));
+
+    if (isSimpleText) {
+      try {
+        const text = await file.text();
+        setContent(text);
+        setUploadedFileInfo({
+          name: file.name,
+          type: file.name.split(".").pop()?.toUpperCase() || "TEXT",
+          charCount: text.length,
+          pageCount: 1,
+        });
+      } catch {
+        // Fallback to backend parseFile
+        try {
+          const parsed = await parseFile(file);
+          setContent(parsed.content);
+          setUploadedFileInfo({
+            name: parsed.filename,
+            type: parsed.file_type.toUpperCase(),
+            charCount: parsed.char_count,
+            pageCount: parsed.page_count,
+          });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Failed to parse file";
+          setFeedback({ type: "error", message: `File extraction failed: ${msg}` });
+        }
+      } finally {
+        setIsParsingFile(false);
+      }
+    } else {
+      // PDF, PPT, PPTX, DOC, DOCX, or any binary file
+      try {
+        const parsed = await parseFile(file);
+        setContent(parsed.content);
+        setUploadedFileInfo({
+          name: parsed.filename,
+          type: parsed.file_type.toUpperCase(),
+          charCount: parsed.char_count,
+          pageCount: parsed.page_count,
+        });
+        setFeedback({
+          type: "success",
+          message: `Successfully extracted ${parsed.char_count.toLocaleString()} characters (${parsed.page_count > 1 ? `${parsed.page_count} pages/slides` : "1 document"}) from ${file.name}.`,
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to extract file text";
+        setFeedback({
+          type: "error",
+          message: `Extraction failed for ${file.name}: ${msg}. You can also paste text directly.`,
+        });
+      } finally {
+        setIsParsingFile(false);
+      }
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (!title) {
-      const cleanName = file.name.replace(/\.[^/.]+$/, "");
-      setTitle(cleanName);
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result;
-      if (typeof text === "string") {
-        setContent(text);
-      }
-    };
-    reader.readAsText(file);
+    processSelectedFile(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -331,7 +391,21 @@ export function Datasets({
                 </div>
 
                 {/* Content Input or File Upload */}
-                <div className="space-y-1.5">
+                <div
+                  className="space-y-1.5"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const droppedFile = e.dataTransfer.files?.[0];
+                    if (droppedFile) {
+                      processSelectedFile(droppedFile);
+                    }
+                  }}
+                >
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-medium text-foreground">
                       Document Content <span className="text-primary">*</span>
@@ -339,29 +413,58 @@ export function Datasets({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                      disabled={isParsingFile}
+                      className="text-[11px] text-primary hover:underline flex items-center gap-1 font-medium"
                     >
-                      <UploadCloud className="h-3 w-3" />
-                      Upload File (.txt, .md, .json)
+                      {isParsingFile ? (
+                        <>
+                          <RefreshCw className="h-3 w-3 animate-spin text-primary" />
+                          <span>Extracting text from file...</span>
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud className="h-3 w-3" />
+                          <span>Upload Any File (PDF, PPT, DOCX, TXT, CSV...)</span>
+                        </>
+                      )}
                     </button>
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".txt,.md,.json,.csv,.log"
+                      accept="*/*"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
                   </div>
+
+                  {uploadedFileInfo && (
+                    <div className="flex items-center justify-between p-2 rounded-md bg-primary/10 border border-primary/25 text-xs">
+                      <div className="flex items-center gap-2 truncate">
+                        <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="font-semibold text-foreground truncate">{uploadedFileInfo.name}</span>
+                        <span className="text-muted-foreground text-[11px]">
+                          ({uploadedFileInfo.type} • {uploadedFileInfo.pageCount && uploadedFileInfo.pageCount > 1 ? `${uploadedFileInfo.pageCount} pages/slides • ` : ""}{uploadedFileInfo.charCount.toLocaleString()} chars)
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="border-primary/40 text-primary text-[10px]">
+                        Parsed
+                      </Badge>
+                    </div>
+                  )}
+
                   <textarea
                     rows={8}
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
-                    placeholder="Paste technical documentation, reports, meeting notes, or dataset records here..."
+                    placeholder="Paste text, dataset records, or drag & drop ANY file (PDF, PowerPoint slides, Word doc, CSV, JSON, logs) here..."
                     required
                     className="w-full rounded-md border border-input bg-muted/30 px-3 py-2 text-xs font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                   />
-                  <div className="text-[10px] text-muted-foreground text-right">
-                    {content.length} characters • ~{Math.ceil(content.length / 4)} tokens
+                  <div className="text-[10px] text-muted-foreground text-right flex items-center justify-between">
+                    <span className="italic">Supports drag & drop for PDF, PPT/PPTX, Word DOCX, and all raw text formats</span>
+                    <span>
+                      {content.length.toLocaleString()} characters • ~{Math.ceil(content.length / 4).toLocaleString()} tokens
+                    </span>
                   </div>
                 </div>
 

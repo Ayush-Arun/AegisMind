@@ -82,6 +82,30 @@ export interface IngestDocumentResponse {
   allowed_users: string[];
 }
 
+export interface ParseFileResponse {
+  filename: string;
+  title: string;
+  content: string;
+  file_type: string;
+  char_count: number;
+  page_count: number;
+}
+
+export interface StudyParams {
+  title: string;
+  content: string;
+  query: string;
+  mode?: "qa" | "quiz" | "summary" | "explain";
+  user_id?: string;
+  tenant_id?: string;
+}
+
+export interface StudyResponse {
+  title: string;
+  answer: string;
+  mode: string;
+}
+
 export interface ResourceItem {
   id: string;
   title: string;
@@ -327,6 +351,99 @@ export async function deleteDocument(documentId: string): Promise<{ status: stri
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(`Delete failed: ${response.statusText} (${errText})`);
+  }
+  return response.json();
+}
+
+export async function parseFile(file: File): Promise<ParseFileResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE}/documents/parse-file`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Parse failed: ${response.statusText} (${errText})`);
+  }
+  return response.json();
+}
+
+export async function uploadDocumentFile(
+  file: File,
+  params?: {
+    title?: string;
+    allowed_users?: string[];
+    tenant_id?: string;
+  }
+): Promise<IngestDocumentResponse & { char_count: number; file_type: string; page_count: number }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (params?.title) formData.append("title", params.title);
+  if (params?.tenant_id) formData.append("tenant_id", params.tenant_id);
+  if (params?.allowed_users && params.allowed_users.length > 0) {
+    formData.append("allowed_users", params.allowed_users.join(","));
+  }
+
+  const response = await fetch(`${API_BASE}/documents/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Upload failed: ${response.statusText} (${errText})`);
+  }
+  return response.json();
+}
+
+export async function studyDocument(params: StudyParams): Promise<StudyResponse> {
+  const response = await fetch(`${API_BASE}/study/ask`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      title: params.title,
+      content: params.content,
+      query: params.query,
+      mode: params.mode || "qa",
+      user_id: params.user_id || "alice",
+      tenant_id: params.tenant_id || "corp-default",
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Study query failed: ${response.statusText} (${errText})`);
+  }
+  return response.json();
+}
+
+export async function createVaultNote(params: {
+  title: string;
+  content: string;
+  tags?: string[];
+  source_query?: string;
+}): Promise<{ status: string; message: string; title: string }> {
+  const response = await fetch(`${API_BASE}/notes`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      title: params.title,
+      content: params.content,
+      tags: params.tags || ["study", "learning"],
+      source_query: params.source_query,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Save note failed: ${response.statusText} (${errText})`);
   }
   return response.json();
 }

@@ -28,6 +28,7 @@ import {
   GitBranch,
   CheckCircle,
   Brain,
+  ArrowLeft,
 } from "lucide-react";
 
 type ActiveTab = "chat" | "search" | "connectors" | "access" | "datasets" | "notes" | "tools" | "graph" | "approval" | "memory";
@@ -39,6 +40,10 @@ export function App() {
   const [isCommandOpen, setIsCommandOpen] = React.useState(false);
   const [isResourcePickerOpen, setIsResourcePickerOpen] = React.useState(false);
   const [initialChatQuery, setInitialChatQuery] = React.useState<string | undefined>(undefined);
+
+  const handleBackToChat = React.useCallback(() => {
+    setActiveTab("chat");
+  }, []);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -61,8 +66,21 @@ export function App() {
               </div>
             </div>
 
+            {/* Back to Chat button when viewing another feature */}
+            {activeTab !== "chat" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBackToChat}
+                className="ml-1 flex items-center gap-1.5 text-xs text-primary border-primary/50 bg-primary/10 hover:bg-primary/20 h-7 font-medium shadow-xs transition-all animate-in fade-in duration-150"
+              >
+                <ArrowLeft className="h-3 w-3" />
+                <span>Back to Chat</span>
+              </Button>
+            )}
+
             {/* Navigation Tabs */}
-            <nav className="hidden md:flex items-center gap-1 ml-6 border-l border-border/60 pl-6 text-xs">
+            <nav className="hidden md:flex items-center gap-1 ml-4 border-l border-border/60 pl-4 text-xs">
               <button
                 type="button"
                 onClick={() => setActiveTab("chat")}
@@ -245,15 +263,16 @@ export function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1">
-        {activeTab === "chat" && (
+      <main className="flex-1 flex flex-col">
+        {/* Chat component is kept mounted to preserve conversation state across tab switching until browser refresh */}
+        <div className={activeTab === "chat" ? "flex-1 flex flex-col" : "hidden"}>
           <Chat
             currentTenantId={currentTenantId}
             currentUserId={currentUserId}
             initialQuery={initialChatQuery}
             onClearInitialQuery={() => setInitialChatQuery(undefined)}
           />
-        )}
+        </div>
         {activeTab === "search" && (
           <Search currentTenantId={currentTenantId} currentUserId={currentUserId} />
         )}
@@ -273,7 +292,18 @@ export function App() {
             }}
           />
         )}
-        {activeTab === "notes" && <Notes />}
+        {activeTab === "notes" && (
+          <Notes
+            currentUserId={currentUserId}
+            currentTenantId={currentTenantId}
+            onNavigateToChat={(query) => {
+              if (query) {
+                setInitialChatQuery(query);
+              }
+              setActiveTab("chat");
+            }}
+          />
+        )}
         {activeTab === "tools" && <LocalTools />}
         {activeTab === "graph" && <KnowledgeGraph />}
         {activeTab === "approval" && <ApprovalPanel />}
