@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { streamChat, listModels, type Citation, type ModelInfo } from "@/lib/api";
+import { streamChat, listModels, parseFile, type Citation, type ModelInfo } from "@/lib/api";
 import {
   Send,
   Square,
@@ -15,7 +15,27 @@ import {
   FileText,
   Lock,
   Cpu,
+  Plus,
+  Paperclip,
+  X,
 } from "lucide-react";
+
+interface AttachedFile {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  isImage: boolean;
+  previewUrl?: string;
+  file: File;
+}
+
+interface MessageAttachment {
+  name: string;
+  isImage: boolean;
+  previewUrl?: string;
+  size: number;
+}
 
 interface Message {
   id: string;
@@ -24,6 +44,7 @@ interface Message {
   thinking?: string;
   citations?: Citation[];
   timestamp: string;
+  attachments?: MessageAttachment[];
 }
 
 interface ChatProps {
@@ -56,11 +77,12 @@ export function Chat({
       id: "msg-welcome",
       role: "assistant",
       content:
-        "Welcome to AegisMind. Ask any question across your enterprise repositories. All answers are strictly governed by Zanzibar access control evaluated at retrieval time.",
+        "Welcome to AegisMind. Ask any question across your enterprise repositories or upload documents and images. All answers are strictly governed by Zanzibar access control evaluated at retrieval time.",
       timestamp: "Just now",
     },
   ]);
   const [inputQuery, setInputQuery] = React.useState("");
+  const [attachedFiles, setAttachedFiles] = React.useState<AttachedFile[]>([]);
   const [modelInfo, setModelInfo] = React.useState<ModelInfo | null>(null);
   const [selectedModel, setSelectedModel] = React.useState<string>("");
   const [isStreaming, setIsStreaming] = React.useState(false);
@@ -68,6 +90,7 @@ export function Chat({
   const [selectedCitation, setSelectedCitation] = React.useState<Citation | null>(null);
   const abortStreamRef = React.useRef<(() => void) | null>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -75,7 +98,7 @@ export function Chat({
 
   React.useEffect(() => {
     scrollToBottom();
-  }, [messages, currentThinking]);
+  }, [messages, currentThinking, attachedFiles]);
 
   React.useEffect(() => {
     listModels()
@@ -95,20 +118,55 @@ export function Chat({
     }
   }, [initialQuery, onClearInitialQuery]);
 
-  const handleSend = () => {
-    if (!inputQuery.trim() || isStreaming) return;
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const newFiles: AttachedFile[] = Array.from(e.target.files).map((f) => {
+      const isImg = f.type.startsWith("image/");
+      return {
+        id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        isImage: isImg,
+        previewUrl: isImg ? URL.createObjectURL(f) : undefined,
+        file: f,
+      };
+    });
+    setAttachedFiles((prev) => [...prev, ...newFiles]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachedFiles((prev) => {
+      const target = prev.find((f) => f.id === id);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((f) => f.id !== id);
+    });
+  };
+
+  const handleSend = async () => {
+    if ((!inputQuery.trim() && attachedFiles.length === 0) || isStreaming) return;
 
     const userMsgId = `user-${Date.now()}`;
     const assistantMsgId = `asst-${Date.now()}`;
-    const query = inputQuery.trim();
+    const query = inputQuery.trim() || "Please analyze the attached file(s).";
+    const currentAttachments = [...attachedFiles];
 
-    const newMessages: Message[] = [
-      ...messages,
+    setMessages((prev) => [
+      ...prev,
       {
         id: userMsgId,
         role: "user",
         content: query,
         timestamp: "Now",
+        attachments: currentAttachments.map((f) => ({
+          name: f.name,
+          isImage: f.isImage,
+          previewUrl: f.previewUrl,
+          size: f.size,
+        })),
       },
       {
         id: assistantMsgId,
@@ -117,15 +175,43 @@ export function Chat({
         citations: [],
         timestamp: "Now",
       },
-    ];
+    ]);
 
-    setMessages(newMessages);
     setInputQuery("");
+    setAttachedFiles([]);
     setIsStreaming(true);
     setCurrentThinking("Initializing request...");
 
+    // If documents are attached, parse their text in background to augment LLM context
+    let fullQuery = query;
+    if (currentAttachments.length > 0) {
+      try {
+        const textSnippets: string[] = [];
+        for (const att of currentAttachments) {
+          if (!att.isImage) {
+            try {
+              setCurrentThinking(`Reading attached document: ${att.name}...`);
+              const res = await parseFile(att.file);
+              if (res.content) {
+                textSnippets.push(`--- Attached File: ${att.name} ---\n${res.content.slice(0, 4000)}`);
+              }
+            } catch {
+              // fallback if parser endpoint has issues
+            }
+          } else {
+            textSnippets.push(`[Attached Image: ${att.name}]`);
+          }
+        }
+        if (textSnippets.length > 0) {
+          fullQuery = `${textSnippets.join("\n\n")}\n\nUser Question: ${query}`;
+        }
+      } catch {
+        // proceed with base query
+      }
+    }
+
     const cancel = streamChat({
-      query,
+      query: fullQuery,
       tenant_id: currentTenantId,
       user_id: currentUserId,
       model: selectedModel || undefined,
@@ -187,11 +273,11 @@ export function Chat({
   return (
     <div className="flex h-full flex-col lg:flex-row gap-4 p-4 max-w-7xl mx-auto w-full">
       {/* Main Conversation Column */}
-      <div className="flex flex-1 flex-col h-[calc(100vh-8rem)] rounded-xl border border-border/80 bg-card/40 backdrop-blur-sm overflow-hidden">
+      <div className="flex flex-1 flex-col h-[calc(100vh-8rem)] rounded-xl border border-border/80 bg-card/70 backdrop-blur-sm overflow-hidden shadow-xs">
         {/* Context Header */}
         <div className="flex items-center justify-between border-b border-border/70 px-4 py-3 bg-muted/20">
           <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-emerald-400" />
+            <Shield className="h-4 w-4 text-emerald-500" />
             <span className="text-xs font-medium text-foreground">
               Zanzibar Enforced Session
             </span>
@@ -239,7 +325,7 @@ export function Chat({
               }`}
             >
               {msg.role === "assistant" && (
-                <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-lg bg-primary/20 text-primary border border-primary/30">
+                <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-lg bg-primary/15 text-primary border border-primary/25">
                   <Bot className="h-4 w-4" />
                 </div>
               )}
@@ -247,42 +333,42 @@ export function Chat({
               <div
                 className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
                   msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted/50 border border-border/60 text-foreground"
+                    ? "bg-primary text-primary-foreground shadow-primary/20"
+                    : "bg-card border border-border/70 text-foreground"
                 }`}
               >
+                {/* Attached Files & Images in Message Bubble */}
+                {msg.attachments && msg.attachments.length > 0 && (
+                  <div className="mb-2.5 flex flex-wrap gap-2">
+                    {msg.attachments.map((att, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs ${
+                          msg.role === "user"
+                            ? "bg-primary-foreground/15 border-primary-foreground/25 text-primary-foreground"
+                            : "bg-secondary border-border text-foreground"
+                        }`}
+                      >
+                        <FileText className="h-4 w-4 shrink-0" />
+                        <div className="min-w-0 pr-1">
+                          <p className="truncate font-medium max-w-[150px] text-[11px]">
+                            {att.name}
+                          </p>
+                          <span className="text-[10px] opacity-75">
+                            {(att.size / 1024).toFixed(0)} KB
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Message Body */}
                 <div className="whitespace-pre-wrap leading-relaxed">
                   {escapeHtml(msg.content)}
                 </div>
 
-                {/* Interactive Citations list */}
-                {msg.citations && msg.citations.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-border/40">
-                    <div className="text-[11px] font-semibold text-muted-foreground mb-1.5 flex items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-amber-400" />
-                      Verified Source Citations:
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {msg.citations.map((cit, idx) => (
-                        <button
-                          key={cit.chunk_id}
-                          type="button"
-                          onClick={() => setSelectedCitation(cit)}
-                          className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/80 px-2 py-0.5 text-xs text-foreground hover:border-primary hover:text-primary transition-all shadow-xs"
-                        >
-                          <span className="font-mono font-bold text-[10px] text-primary">
-                            [{idx + 1}]
-                          </span>
-                          <span className="truncate max-w-[150px]">{cit.title}</span>
-                          <Badge variant="success" className="text-[9px] px-1 py-0 ml-0.5">
-                            {Math.round(cit.score * 100)}%
-                          </Badge>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+
 
                 <div
                   className={`mt-1 text-[10px] ${
@@ -296,7 +382,7 @@ export function Chat({
               </div>
 
               {msg.role === "user" && (
-                <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-lg bg-muted text-muted-foreground border border-border/60">
+                <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-lg bg-secondary text-foreground border border-border/60">
                   <User className="h-4 w-4" />
                 </div>
               )}
@@ -306,7 +392,7 @@ export function Chat({
           {/* Thinking Status Indicator */}
           {currentThinking && (
             <div className="flex gap-3 items-center text-xs text-muted-foreground animate-pulse pl-11">
-              <Lock className="h-3.5 w-3.5 text-emerald-400" />
+              <Lock className="h-3.5 w-3.5 text-emerald-500" />
               <span>{currentThinking}</span>
             </div>
           )}
@@ -314,22 +400,84 @@ export function Chat({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Bar */}
-        <div className="border-t border-border/70 p-3 bg-card/60">
+        {/* Input Bar with Attached Files & Images Tray */}
+        <div className="border-t border-border/70 p-3 bg-card/75">
+          {/* Attached Files & Images Preview Tray */}
+          {attachedFiles.length > 0 && (
+            <div className="mb-2.5 flex flex-wrap gap-2 animate-in fade-in-50 duration-150">
+              {attachedFiles.map((att) => (
+                <div
+                  key={att.id}
+                  className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-lg bg-secondary border border-border/80 text-xs shadow-2xs group"
+                >
+                  {att.isImage && att.previewUrl ? (
+                    <img
+                      src={att.previewUrl}
+                      alt={att.name}
+                      className="h-6 w-6 rounded object-cover border border-border/60"
+                    />
+                  ) : (
+                    <FileText className="h-4 w-4 text-primary shrink-0" />
+                  )}
+                  <span className="max-w-[130px] truncate font-medium text-foreground text-[11px]">
+                    {att.name}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    ({(att.size / 1024).toFixed(0)} KB)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(att.id)}
+                    className="h-4.5 w-4.5 rounded-full flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors ml-0.5"
+                    title="Remove attachment"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSend();
             }}
-            className="flex gap-2"
+            className="flex items-center gap-2"
           >
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.docx,.pptx,.txt,.md,.csv,.xlsx,.json"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
+            {/* + / Pin button to add files or images */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="h-10 w-10 shrink-0 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/70 hover:border-border transition-all shadow-2xs group relative"
+              title="Add files or images (+ / Pin)"
+            >
+              <Plus className="h-4.5 w-4.5 text-foreground/80 group-hover:scale-110 transition-transform" />
+              <Paperclip className="h-2.5 w-2.5 text-primary absolute bottom-1.5 right-1.5 opacity-80" />
+            </button>
+
             <Input
-              placeholder="Ask anything (e.g. How does zero stale read revocation work?)..."
+              placeholder={
+                attachedFiles.length > 0
+                  ? "Ask anything about the attached files or images..."
+                  : "Ask anything (e.g. How does zero stale read revocation work?)..."
+              }
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
               disabled={isStreaming}
               className="flex-1 bg-background/90"
             />
+
             {isStreaming ? (
               <Button
                 type="button"
@@ -343,7 +491,7 @@ export function Chat({
             ) : (
               <Button
                 type="submit"
-                disabled={!inputQuery.trim()}
+                disabled={!inputQuery.trim() && attachedFiles.length === 0}
                 className="gap-1.5"
               >
                 <Send className="h-4 w-4" />
@@ -356,7 +504,7 @@ export function Chat({
 
       {/* Interactive Citation Detail Panel */}
       {selectedCitation ? (
-        <div className="w-full lg:w-96 rounded-xl border border-border/80 bg-card/50 p-4 backdrop-blur-sm flex flex-col justify-between animate-in slide-in-from-right-4 duration-200">
+        <div className="w-full lg:w-96 rounded-xl border border-border/80 bg-card/60 p-4 backdrop-blur-sm flex flex-col justify-between animate-in slide-in-from-right-4 duration-200 shadow-xs">
           <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-border/50 pb-2">
               <div className="flex items-center gap-1.5">
@@ -397,7 +545,7 @@ export function Chat({
               </Badge>
             </div>
 
-            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-400 flex items-center gap-2">
+            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
               <Shield className="h-4 w-4 shrink-0" />
               <span>Zanzibar policy check passed for user {currentUserId}</span>
             </div>
@@ -416,7 +564,7 @@ export function Chat({
           </div>
         </div>
       ) : (
-        <div className="hidden lg:flex w-80 rounded-xl border border-dashed border-border/60 p-6 flex-col items-center justify-center text-center text-muted-foreground">
+        <div className="hidden lg:flex w-80 rounded-xl border border-dashed border-border/70 p-6 flex-col items-center justify-center text-center text-muted-foreground bg-card/30">
           <FileText className="h-8 w-8 mb-2 opacity-40" />
           <p className="text-xs font-medium">Citation Preview</p>
           <p className="text-[11px] text-muted-foreground/80 mt-1">
