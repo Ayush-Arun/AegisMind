@@ -19,6 +19,7 @@ import {
   type ModelInfo,
   type ResourceItem,
 } from "@/lib/api";
+import { recordExchange } from "@/lib/conversationStore";
 import {
   Database,
   UploadCloud,
@@ -390,7 +391,7 @@ export function Datasets({
         id: `asst-${Date.now()}`,
         role: "assistant",
         content: res.answer,
-        timestamp: "Just now",
+        timestamp: new Date().toISOString(),
         memorySaved: true,
       };
 
@@ -398,6 +399,23 @@ export function Datasets({
         ...prev,
         [currentDocId]: [...(prev[currentDocId] || []), assistantMsg],
       }));
+
+      // Persist to cross-chatbox conversation store for Memory aggregation
+      recordExchange({
+        threadId: `dataset-${currentDocId}`,
+        label: `Dataset: ${activeDataset.title}`,
+        source: "dataset",
+        userMessage: {
+          id: userMsg.id,
+          content: textToSend,
+          timestamp: new Date().toISOString(),
+        },
+        assistantMessage: {
+          id: assistantMsg.id,
+          content: res.answer,
+          timestamp: new Date().toISOString(),
+        },
+      });
 
       setMemorySyncNotice("Preserved in Long-Term Memory");
       setTimeout(() => setMemorySyncNotice(null), 3500);

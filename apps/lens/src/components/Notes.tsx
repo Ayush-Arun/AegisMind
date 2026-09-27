@@ -18,6 +18,7 @@ import {
   type NoteSummary,
   type NoteDetail,
 } from "@/lib/api";
+import { recordExchange } from "@/lib/conversationStore";
 import {
   FileText,
   Tag,
@@ -318,13 +319,30 @@ export function Notes({
         role: "assistant",
         content: res.answer,
         mode,
-        timestamp: "Just now",
+        timestamp: new Date().toISOString(),
       };
 
       setDocConversations((prev) => ({
         ...prev,
         [currentDocId]: [...(prev[currentDocId] || []), assistantMsg],
       }));
+
+      // Persist to cross-chatbox conversation store for Memory aggregation
+      recordExchange({
+        threadId: `notes-${currentDocId}`,
+        label: `Notes: ${activeDoc.title}`,
+        source: "notes",
+        userMessage: {
+          id: userMsg.id,
+          content: queryText,
+          timestamp: new Date().toISOString(),
+        },
+        assistantMessage: {
+          id: assistantMsg.id,
+          content: res.answer,
+          timestamp: new Date().toISOString(),
+        },
+      });
 
       // Flash confirmation that turn was preserved in long-term memory
       setMemorySyncNotice("Preserved in Long-Term Memory");

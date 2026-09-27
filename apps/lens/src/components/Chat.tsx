@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { streamChat, listModels, parseFile, type Citation, type ModelInfo } from "@/lib/api";
+import { recordExchange } from "@/lib/conversationStore";
 import {
   Send,
   Square,
@@ -11,13 +12,13 @@ import {
   Bot,
   User,
   ExternalLink,
-  Sparkles,
   FileText,
   Lock,
   Cpu,
   Plus,
   Paperclip,
   X,
+  CornerDownRight,
 } from "lucide-react";
 
 interface AttachedFile {
@@ -88,9 +89,13 @@ export function Chat({
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [currentThinking, setCurrentThinking] = React.useState<string | null>(null);
   const [selectedCitation, setSelectedCitation] = React.useState<Citation | null>(null);
+  // When recallMode is true the user is asking the agent to retrieve answers
+  // from past conversation memory across all chatboxes
+  const [recallMode, setRecallMode] = React.useState(false);
   const abortStreamRef = React.useRef<(() => void) | null>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -151,7 +156,12 @@ export function Chat({
 
     const userMsgId = `user-${Date.now()}`;
     const assistantMsgId = `asst-${Date.now()}`;
-    const query = inputQuery.trim() || "Please analyze the attached file(s).";
+    const rawQuery = inputQuery.trim() || "Please analyze the attached file(s).";
+
+    // In recallMode, prefix the query so the agent searches past conversation memory
+    const query = recallMode
+      ? `[RECALL FROM MEMORY] ${rawQuery}`
+      : rawQuery;
     const currentAttachments = [...attachedFiles];
 
     setMessages((prev) => [
@@ -159,8 +169,8 @@ export function Chat({
       {
         id: userMsgId,
         role: "user",
-        content: query,
-        timestamp: "Now",
+        content: recallMode ? `[Memory Recall] ${rawQuery}` : rawQuery,
+        timestamp: new Date().toISOString(),
         attachments: currentAttachments.map((f) => ({
           name: f.name,
           isImage: f.isImage,
@@ -173,12 +183,13 @@ export function Chat({
         role: "assistant",
         content: "",
         citations: [],
-        timestamp: "Now",
+        timestamp: new Date().toISOString(),
       },
     ]);
 
     setInputQuery("");
     setAttachedFiles([]);
+    setRecallMode(false);
     setIsStreaming(true);
     setCurrentThinking("Initializing request...");
 
@@ -210,6 +221,9 @@ export function Chat({
       }
     }
 
+    // Captured response for store recording
+    let accumulatedResponse = "";
+
     const cancel = streamChat({
       query: fullQuery,
       tenant_id: currentTenantId,
@@ -219,6 +233,7 @@ export function Chat({
         setCurrentThinking(status);
       },
       onToken: (token) => {
+        accumulatedResponse += token;
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMsgId
@@ -238,6 +253,24 @@ export function Chat({
         setIsStreaming(false);
         setCurrentThinking(null);
         abortStreamRef.current = null;
+        // Persist the completed exchange to the cross-chatbox conversation store
+        if (accumulatedResponse.trim()) {
+          recordExchange({
+            threadId: "home",
+            label: "Main Chat",
+            source: "home",
+            userMessage: {
+              id: userMsgId,
+              content: recallMode ? `[Memory Recall] ${rawQuery}` : rawQuery,
+              timestamp: new Date().toISOString(),
+            },
+            assistantMessage: {
+              id: assistantMsgId,
+              content: accumulatedResponse,
+              timestamp: new Date().toISOString(),
+            },
+          });
+        }
       },
       onError: (err) => {
         setIsStreaming(false);
@@ -438,6 +471,24 @@ export function Chat({
             </div>
           )}
 
+          {/* Memory Recall Mode Banner */}
+          {recallMode && (
+            <div className="mb-2 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/30 flex items-center gap-2 text-xs text-violet-600 dark:text-violet-400 animate-in fade-in-50 duration-150">
+              <CornerDownRight className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1 font-medium">
+                Memory Recall Mode: your question will be answered from past conversation history across all chatboxes.
+              </span>
+              <button
+                type="button"
+                onClick={() => setRecallMode(false)}
+                className="text-violet-400 hover:text-violet-600 ml-1"
+                title="Cancel recall mode"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -466,16 +517,32 @@ export function Chat({
               <Paperclip className="h-2.5 w-2.5 text-primary absolute bottom-1.5 right-1.5 opacity-80" />
             </button>
 
+            {/* Memory Recall Arrow Button */}
+            <button
+              type="button"
+              onClick={() => setRecallMode((prev) => !prev)}
+              className={`h-10 w-10 shrink-0 rounded-lg flex items-center justify-center border transition-all shadow-2xs ${
+                recallMode
+                  ? "bg-violet-500/20 border-violet-500/50 text-violet-600 dark:text-violet-400"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary border-border/70 hover:border-border"
+              }`}
+              title="Toggle Memory Recall Mode: ask the AI to answer from past conversation history"
+            >
+              <CornerDownRight className="h-4 w-4" />
+            </button>
+
             <Input
               placeholder={
-                attachedFiles.length > 0
+                recallMode
+                  ? "Ask about past conversations... (Memory Recall active)"
+                  : attachedFiles.length > 0
                   ? "Ask anything about the attached files or images..."
                   : "Ask anything (e.g. How does zero stale read revocation work?)..."
               }
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
               disabled={isStreaming}
-              className="flex-1 bg-background/90"
+              className={`flex-1 bg-background/90 ${recallMode ? "border-violet-500/40 focus-visible:ring-violet-500/40" : ""}`}
             />
 
             {isStreaming ? (
