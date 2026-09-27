@@ -1,34 +1,120 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --card: 224 71% 6%;
-    --card-foreground: 213 31% 91%;
-    --popover: 224 71% 6%;
-    --popover-foreground: 213 31% 91%;
-    --primary: 210 100% 52%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 222 47% 14%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 223 47% 12%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 216 34% 17%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
-    --ring: 216 100% 50%;
-    --radius: 0.5rem;
+    /* Creamy White / Warm Porcelain Modern Light Palette */
+    --background: 40 28% 97%;          /* #faf8f5 - Warm creamy porcelain */
+    --foreground: 220 20% 12%;         /* #181b22 - Crisp high-contrast charcoal */
+    
+    --card: 0 0% 100%;                 /* #ffffff - Pure crisp white elevated surface */
+    --card-foreground: 220 20% 12%;
+    
+    --popover: 0 0% 100%;              /* #ffffff */
+    --popover-foreground: 220 20% 12%;
+    
+    /* Modern Indigo Primary */
+    --primary: 243 75% 58%;            /* #4f46e5 - Modern Royal Indigo */
+    --primary-foreground: 0 0% 100%;
+    
+    /* Warm Cream Secondary & Muted */
+    --secondary: 40 18% 92.5%;         /* #f2eee6 */
+    --secondary-foreground: 220 18% 18%;
+    
+    --muted: 40 16% 90%;               /* #eae5dc */
+    --muted-foreground: 220 10% 46%;   /* #64748b */
+    
+    /* Accents & States */
+    --accent: 243 75% 95%;             /* Soft indigo wash */
+    --accent-foreground: 243 75% 45%;
+    
+    --destructive: 0 84% 60%;          /* Modern coral/red */
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 40 14% 86%;              /* #e0dad0 - Warm hairline border */
+    --input: 40 14% 86%;
+    --ring: 243 75% 58%;
+    
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    /* Modern Obsidian & Slate Dark Palette */
+    --background: 228 16% 6%;          /* #0c0e14 - Deep clean obsidian */
+    --foreground: 220 20% 98%;         /* #f8fafc - Crisp high-contrast white */
+    
+    --card: 228 14% 9.5%;              /* #12151f - Sleek dark slate card */
+    --card-foreground: 220 20% 98%;
+    
+    --popover: 228 15% 11.5%;          /* #161a26 */
+    --popover-foreground: 220 20% 98%;
+    
+    --primary: 242 84% 65%;            /* #6366f1 - Vibrant electric indigo */
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 228 12% 14%;          /* #1e2230 */
+    --secondary-foreground: 220 15% 94%;
+    
+    --muted: 228 12% 12%;              /* #181b26 */
+    --muted-foreground: 224 10% 64%;   /* #9ca3af */
+    
+    --accent: 242 60% 18%;
+    --accent-foreground: 220 20% 98%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 228 12% 16%;             /* #1f2433 */
+    --input: 228 12% 16%;
+    --ring: 242 84% 65%;
   }
 }
 
 body {
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-feature-settings: "rlig" 1, "calt" 1;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Modern ambient gradient backdrop */
+.ambient-glow {
+  background-image: 
+    radial-gradient(at 10% 0%, hsla(242, 75%, 58%, 0.04) 0px, transparent 50%),
+    radial-gradient(at 90% 0%, hsla(40, 60%, 70%, 0.12) 0px, transparent 50%);
+}
+
+.dark .ambient-glow {
+  background-image: 
+    radial-gradient(at 10% 0%, hsla(242, 84%, 65%, 0.08) 0px, transparent 50%),
+    radial-gradient(at 90% 0%, hsla(180, 80%, 50%, 0.05) 0px, transparent 50%);
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: hsla(228, 14%, 9.5%, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid hsla(228, 12%, 22%, 0.6);
+}
+
+/* Sleek minimalist scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border) / 0.7);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.5);
 }
