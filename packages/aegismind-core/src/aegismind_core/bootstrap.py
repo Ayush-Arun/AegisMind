@@ -129,6 +129,11 @@ async def seed_initial_knowledge(
                 "uri": doc["uri"],
                 "tenant_id": doc["tenant_id"],
                 "chunks_count": 1,
+                "chunk_count": 1,
+                "type": "document",
+                "connector": "core_seed",
+                "content": content,
+                "allowed_users": doc["allowed_users"],
             }
         )
 

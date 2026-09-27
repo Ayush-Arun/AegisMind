@@ -67,3 +67,16 @@ def test_ndcg_at_k_suboptimal_ranking() -> None:
 
     score = ndcg_at_k(retrieved, relevance, k=3)
     assert 0.0 < score < 1.0
+
+
+def test_compute_cross_section_recall() -> None:
+    from aegismind_retrieval.eval.metrics import compute_cross_section_recall
+
+    expected_sections = ["sec_auth", "sec_encryption", "sec_compliance", "sec_audit"]
+    retrieved_sections = ["sec_auth", "sec_encryption", "sec_auth", "sec_audit", "sec_random"]
+    csr = compute_cross_section_recall(retrieved_sections, expected_sections)
+    assert csr == 0.75
+
+    full_retrieved = ["sec_compliance", "sec_auth", "sec_encryption", "sec_audit"]
+    assert compute_cross_section_recall(full_retrieved, expected_sections) == 1.0
+    assert compute_cross_section_recall(full_retrieved, []) == 0.0

@@ -529,7 +529,7 @@ export function App() {
             <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
             <span>AegisMind Core v0.1.0</span>
             <span>•</span>
-            <span>SpiceDB Zanzibar</span>
+            <span>Sovereign Local Engine Active</span>
             <span>•</span>
             <span>RRF Vector Active</span>
           </div>

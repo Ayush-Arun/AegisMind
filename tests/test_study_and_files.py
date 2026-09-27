@@ -39,12 +39,12 @@ def test_extract_text_pptx() -> None:
 
     prs = pptx.Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[0])
-    slide.shapes.title.text = "Key Slides on Zanzibar"
+    slide.shapes.title.text = "Key Slides on Sovereign Access"
     buf = io.BytesIO()
     prs.save(buf)
 
     text, file_type, count = extract_text_from_file_bytes("lecture.pptx", buf.getvalue())
-    assert "Key Slides on Zanzibar" in text
+    assert "Key Slides on Sovereign Access" in text
     assert file_type == "presentation"
     assert count == 1
 
@@ -59,7 +59,7 @@ def test_study_ask_and_notes_flow() -> None:
 
         # 1. Parse File Endpoint
         file_bytes = (
-            b"Course Lecture 1:\nIntroduction to Vector Search and SpiceDB Zanzibar Access."
+            b"Course Lecture 1:\nIntroduction to Vector Search and Sovereign Access Control."
         )
         parse_res = client.post(
             "/api/v1/documents/parse-file",
@@ -115,7 +115,7 @@ def test_study_ask_and_notes_flow() -> None:
             "/api/v1/notes",
             json={
                 "title": "Study Notes: Lecture 1",
-                "content": "Key takeaways on Vector Search and Zanzibar.",
+                "content": "Key takeaways on Vector Search and Sovereign Access.",
                 "tags": ["study", "lecture"],
                 "notes_dir": str(notes_dir),
             },

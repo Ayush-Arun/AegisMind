@@ -1,5 +1,5 @@
 ﻿{
-  "name": "AegisMind — Daily Audit Digest",
+  "name": "AegisMind - Daily Audit Digest",
   "nodes": [
     {
       "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * 1-5" }] } },
@@ -49,7 +49,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const digest = $('Compute Digest Stats').item.json;\nconst readiness = $('GET /api/v1/readiness').item.json;\nconst checks = readiness.checks || {};\nconst healthLines = Object.entries(checks).map(([k,v]) => (v === 'ok' ? ':white_check_mark:' : ':x:') + ' ' + k + ': ' + v).join('\\n');\nconst topUsersText = digest.topUsersList.length ? digest.topUsersList.join(', ') : 'none';\nconst message = [\n  ':bar_chart: *AegisMind Daily Digest — ' + digest.date + '*',\n  '',\n  '*Activity (last 24h)*',\n  ':mag: Searches: *' + digest.searchCount + '*',\n  ':inbox_tray: Ingestions: *' + digest.ingestCount + '*',\n  ':arrows_counterclockwise: Connector Syncs: *' + digest.syncCount + '*',\n  ':busts_in_silhouette: Top Users: ' + topUsersText,\n  '',\n  '*System Health*',\n  healthLines\n].join('\\n');\nreturn [{ json: { text: message } }];"
+        "jsCode": "const digest = $('Compute Digest Stats').item.json;\nconst readiness = $('GET /api/v1/readiness').item.json;\nconst checks = readiness.checks || {};\nconst healthLines = Object.entries(checks).map(([k,v]) => (v === 'ok' ? ':white_check_mark:' : ':x:') + ' ' + k + ': ' + v).join('\\n');\nconst topUsersText = digest.topUsersList.length ? digest.topUsersList.join(', ') : 'none';\nconst message = [\n  ':bar_chart: *AegisMind Daily Digest - ' + digest.date + '*',\n  '',\n  '*Activity (last 24h)*',\n  ':mag: Searches: *' + digest.searchCount + '*',\n  ':inbox_tray: Ingestions: *' + digest.ingestCount + '*',\n  ':arrows_counterclockwise: Connector Syncs: *' + digest.syncCount + '*',\n  ':busts_in_silhouette: Top Users: ' + topUsersText,\n  '',\n  '*System Health*',\n  healthLines\n].join('\\n');\nreturn [{ json: { text: message } }];"
       },
       "id": "format-digest",
       "name": "Format Digest Message",

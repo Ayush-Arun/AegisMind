@@ -1,5 +1,5 @@
 ﻿{
-  "name": "AegisMind — Connector Scheduled Sync",
+  "name": "AegisMind - Connector Scheduled Sync",
   "nodes": [
     {
       "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] } },

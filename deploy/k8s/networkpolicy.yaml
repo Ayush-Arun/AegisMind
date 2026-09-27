@@ -53,16 +53,7 @@ spec:
         - protocol: TCP
           port: 5432
 
-    # 3. Authorization Engine: SpiceDB gRPC
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: spicedb
-      ports:
-        - protocol: TCP
-          port: 50051
-
-    # 4. Neural Models: TEI Embedder and Reranker
+    # 3. Neural Models: TEI Embedder and Reranker
     - to:
         - podSelector:
             matchLabels:
@@ -76,7 +67,7 @@ spec:
         - protocol: TCP
           port: 8080
 
-    # 5. Document Parsing: Docling Service
+    # 4. Document Parsing: Docling Service
     - to:
         - podSelector:
             matchLabels:
@@ -85,7 +76,7 @@ spec:
         - protocol: TCP
           port: 5001
 
-    # 6. LLM Providers: Local Ollama daemon or External Hosted LLMs (HTTPS)
+    # 5. LLM Providers: Local Ollama daemon or External Hosted LLMs (HTTPS)
     - to:
         - podSelector:
             matchLabels:

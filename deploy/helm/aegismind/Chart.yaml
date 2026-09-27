@@ -6,10 +6,10 @@ version: 0.1.0
 appVersion: 0.1.0
 keywords:
   - aegismind
-  - zanzibar
+  - sovereign
   - search
   - rag
-  - spicedb
+  - authorization
   - access-control
 maintainers:
   - name: AegisMind Team

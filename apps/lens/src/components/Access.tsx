@@ -50,7 +50,7 @@ export function Access({ currentTenantId, currentUserId }: AccessProps) {
           ? {
               ...r,
               allowed: false,
-              path: [`user:${selectedUser}`, "revoked via Zanzibar delete_tuples", "denied"],
+              path: [`user:${selectedUser}`, "revoked via sovereign access policy", "denied"],
             }
           : r
       )
@@ -63,7 +63,7 @@ export function Access({ currentTenantId, currentUserId }: AccessProps) {
   const handleResetRevocations = () => {
     setRevokedSet(new Set());
     loadGraph(selectedUser);
-    setNotice("Restored original Zanzibar permissions graph.");
+    setNotice("Restored original sovereign permissions graph.");
     setTimeout(() => setNotice(null), 3000);
   };
 
@@ -74,7 +74,7 @@ export function Access({ currentTenantId, currentUserId }: AccessProps) {
         <div>
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Network className="h-5 w-5 text-primary" />
-            Zanzibar Relationship Graph Explorer
+            Sovereign Access Policy & Graph Explorer
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Evaluate subject-to-resource graph traversal and verify immediate revocation propagation.
@@ -184,7 +184,7 @@ export function Access({ currentTenantId, currentUserId }: AccessProps) {
 
               <CardContent className="p-4 pt-2">
                 <div className="text-xs text-muted-foreground mb-1.5 font-medium">
-                  Zanzibar Resolution Traversal Path:
+                  Sovereign Policy Resolution Traversal Path:
                 </div>
                 {/* Visual Step-by-Step Traversal */}
                 <div className="flex flex-wrap items-center gap-2 rounded-lg bg-background/80 border border-border/50 p-2.5">

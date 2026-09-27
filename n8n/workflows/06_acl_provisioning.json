@@ -1,5 +1,5 @@
 ﻿{
-  "name": "AegisMind — ACL Provisioning from HR System",
+  "name": "AegisMind - ACL Provisioning from HR System",
   "nodes": [
     {
       "parameters": { "httpMethod": "POST", "path": "aegismind/acl/provision", "responseMode": "responseNode", "options": {} },

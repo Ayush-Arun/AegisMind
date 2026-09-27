@@ -1,5 +1,5 @@
 ﻿{
-  "name": "AegisMind — Slack Bot Search Interface",
+  "name": "AegisMind - Slack Bot Search Interface",
   "nodes": [
     {
       "parameters": { "httpMethod": "POST", "path": "aegismind/slack/events", "responseMode": "responseNode", "options": {} },

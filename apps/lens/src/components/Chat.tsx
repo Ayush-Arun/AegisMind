@@ -77,7 +77,7 @@ export function Chat({
       id: "msg-welcome",
       role: "assistant",
       content:
-        "Welcome to AegisMind. Ask any question across your enterprise repositories or upload documents and images. All answers are strictly governed by Zanzibar access control evaluated at retrieval time.",
+        "Welcome to AegisMind. Ask any question across your enterprise repositories. All answers are strictly governed by sovereign access control evaluated at retrieval time.",
       timestamp: "Just now",
     },
   ]);
@@ -279,7 +279,7 @@ export function Chat({
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-emerald-500" />
             <span className="text-xs font-medium text-foreground">
-              Zanzibar Enforced Session
+              Sovereign Enforced Session
             </span>
           </div>
           <div className="flex items-center gap-2 text-xs">
@@ -547,7 +547,7 @@ export function Chat({
 
             <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
               <Shield className="h-4 w-4 shrink-0" />
-              <span>Zanzibar policy check passed for user {currentUserId}</span>
+              <span>Sovereign policy check passed for user {currentUserId}</span>
             </div>
           </div>
 

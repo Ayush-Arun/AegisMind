@@ -23,10 +23,6 @@ images:
     repository: aegismind/lens
     tag: "0.1.0"
     pullPolicy: IfNotPresent
-  spicedb:
-    repository: authzed/spicedb
-    tag: "v1.38.0"
-    pullPolicy: IfNotPresent
   postgres:
     repository: timescale/timescaledb-ha
     tag: "pg17"
@@ -35,14 +31,13 @@ images:
 config:
   env: production
   tenantDefault: corp-default
-  spicedbEndpoint: "spicedb:50051"
+  sovereignMode: "true"
   teiEmbedderUrl: "http://tei-embedder:80"
   teiRerankerUrl: "http://tei-reranker:80"
   doclingUrl: "http://docling:5001"
 
 secrets:
   databaseUrl: "postgresql://aegismind:aegismind_secure_password@postgres:5432/aegismind"
-  spicedbToken: "aegismind-spicedb-preshared-key"
   masterKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 securityContext:
@@ -65,10 +60,6 @@ service:
   lens:
     type: ClusterIP
     port: 80
-  spicedb:
-    type: ClusterIP
-    grpcPort: 50051
-    httpPort: 8443
   postgres:
     type: ClusterIP
     port: 5432

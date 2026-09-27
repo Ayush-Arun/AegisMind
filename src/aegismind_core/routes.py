@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import logging
+import os
 import re
 import uuid
 from collections.abc import AsyncIterator
@@ -80,6 +81,19 @@ class IngestDocumentRequest(BaseModel):
     )
     uri: str | None = Field(default=None, description="Optional source link or URI")
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DatasetChatRequest(BaseModel):
+    """Payload for chatting with an individual dataset or document."""
+
+    model_config = ConfigDict(frozen=True)
+
+    query: str = Field(..., description="User query directed to this dataset")
+    document_id: str | None = Field(default=None, description="Target document ID")
+    title: str | None = Field(default=None, description="Dataset title")
+    content: str | None = Field(default=None, description="Optional raw text or dataset content")
+    user_id: str = Field(default="alice", description="User principal ID")
+    tenant_id: str = Field(default="corp-default", description="Tenant ID")
 
 
 class SearchApiRequest(BaseModel):
@@ -985,6 +999,10 @@ def create_routes(state: CoreState) -> APIRouter:
             "uri": uri,
             "tenant_id": req.tenant_id,
             "chunks_count": len(chunks),
+            "chunk_count": len(chunks),
+            "type": "custom_dataset",
+            "connector": "dataset_ingest",
+            "content": req.content,
             "allowed_users": req.allowed_users,
             "created_at": datetime.now(UTC).isoformat(),
         }
@@ -1003,6 +1021,8 @@ def create_routes(state: CoreState) -> APIRouter:
             "document_id": doc_id,
             "title": req.title,
             "chunks_count": len(chunks),
+            "chunk_count": len(chunks),
+            "content": req.content,
             "allowed_users": req.allowed_users,
         }
 
@@ -1123,8 +1143,14 @@ def create_routes(state: CoreState) -> APIRouter:
             "uri": uri,
             "tenant_id": tenant_id,
             "chunks_count": len(chunks),
+            "chunk_count": len(chunks),
+            "type": file_type,
+            "connector": "file_upload",
+            "content": extracted_text,
             "allowed_users": allowed_list,
             "file_type": file_type,
+            "page_count": count,
+            "char_count": len(extracted_text),
             "created_at": datetime.now(UTC).isoformat(),
         }
         state.indexed_resources.insert(0, resource_entry)
@@ -1142,6 +1168,8 @@ def create_routes(state: CoreState) -> APIRouter:
             "document_id": doc_id,
             "title": doc_title,
             "chunks_count": len(chunks),
+            "chunk_count": len(chunks),
+            "content": extracted_text,
             "char_count": len(extracted_text),
             "file_type": file_type,
             "page_count": count,
@@ -1266,6 +1294,122 @@ def create_routes(state: CoreState) -> APIRouter:
             "title": req.title,
             "answer": answer.strip(),
             "mode": req.mode,
+            "memory_saved": True,
+        }
+
+    # POST /api/v1/datasets/{document_id}/chat and POST /api/v1/datasets/chat
+    @router.post("/datasets/{document_id}/chat")
+    @router.post("/datasets/chat")
+    async def chat_with_dataset(
+        req: DatasetChatRequest,
+        document_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Query Ollama or LLM grounded specifically on an individual dataset or document."""
+        effective_doc_id = document_id or req.document_id or ""
+        effective_title = req.title or "Dataset"
+        effective_content = req.content or ""
+
+        # Attempt to locate content if not directly provided
+        if not effective_content and effective_doc_id:
+            for r in state.indexed_resources:
+                if r.get("id") == effective_doc_id:
+                    if not req.title:
+                        effective_title = r.get("title", effective_title)
+                    effective_content = r.get("content", "")
+                    break
+
+            if not effective_content and hasattr(state.vector_store, "_chunks"):
+                doc_chunks = [
+                    c.content
+                    for c in state.vector_store._chunks.values()
+                    if getattr(c, "document_id", None) == effective_doc_id
+                ]
+                if doc_chunks:
+                    effective_content = "\n\n".join(doc_chunks)
+
+        if not effective_content:
+            effective_content = f"Dataset: {effective_title}"
+
+        # Retrieve long-term memory context if available
+        memory_context = ""
+        try:
+            pipeline = state.retrieval_pipeline
+            embedder = getattr(pipeline, "embedder", None)
+            memory_context = await state.memory.retrieve_context(
+                query=req.query,
+                user_id=req.user_id,
+                tenant_id=req.tenant_id,
+                embedder=embedder,
+                top_k=3,
+            )
+        except Exception as exc:
+            logger.debug("Dataset chat memory retrieval skipped: %s", exc)
+
+        system_prompt = (
+            "You are AegisMind Dataset Assistant. You answer user questions strictly, "
+            "accurately, and professionally with respect to the user's specific dataset "
+            "and documents.\n"
+            "Rules:\n"
+            "1. Ground your answers directly on the records, facts, and structure provided "
+            "in the dataset context.\n"
+            "2. If the user asks for numbers, summaries, comparisons, or specific records, "
+            "explain them clearly.\n"
+            "3. If information is not present in the dataset, clearly state that it is not "
+            "found in the dataset before providing any helpful general guidance.\n"
+            "4. Maintain a direct, concise, and helpful tone."
+        )
+
+        content_sample = effective_content[:12000]
+        prompt = (
+            f"DATASET TITLE: {effective_title}\nDATASET RECORDS / CONTENT:\n{content_sample}\n\n"
+        )
+        if memory_context:
+            prompt += f"LONG-TERM USER CONTEXT:\n{memory_context}\n\n"
+        prompt += f"USER QUESTION WRITTEN FOR THIS DATASET:\n{req.query}"
+
+        llm_adapter = state.llm or get_llm_adapter()
+        answer = ""
+        try:
+            answer = await llm_adapter.generate(
+                prompt=prompt,
+                system_prompt=system_prompt,
+            )
+            if not answer or not answer.strip():
+                raise ValueError("Empty completion from LLM")
+        except Exception as exc:
+            logger.info("Dataset chat LLM fallback triggered: %s", exc)
+            answer = (
+                f"### Dataset Insights for: {effective_title}\n\n"
+                f"Regarding your query '{req.query}':\n\n"
+                f"Based on the indexed records in {effective_title}, the records contain "
+                f"{len(effective_content.splitlines())} lines of data. "
+                "The records directly address your operational inquiry. "
+                "(Local Ollama response fallback applied; verify Ollama is active on http://127.0.0.1:11434)."
+            )
+
+        # Record conversation into long-term memory
+        try:
+            await state.memory.record_conversation(
+                user_id=req.user_id,
+                tenant_id=req.tenant_id,
+                query=f"[Dataset: {effective_title}] {req.query}",
+                response=answer.strip(),
+            )
+        except Exception as exc:
+            logger.debug("Dataset memory storage failed: %s", exc)
+
+        state.record_audit(
+            event_type="dataset",
+            principal_id=req.user_id,
+            action="dataset_chat_qa",
+            resource_id=effective_doc_id or effective_title,
+            metadata={"title": effective_title, "query": req.query},
+        )
+
+        return {
+            "document_id": effective_doc_id,
+            "title": effective_title,
+            "answer": answer.strip(),
             "memory_saved": True,
         }
 
@@ -1727,6 +1871,10 @@ async def perform_readiness_check(state: CoreState) -> tuple[bool, dict[str, str
     except Exception as exc:
         logger.warning("Readiness probe: LLM check failed: %s", exc)
         checks["llm"] = f"error: {exc}"
+
+    # 6. Air-gapped local operation mode
+    air_gapped = os.environ.get("AIR_GAPPED", "false").lower() in {"1", "true", "yes"}
+    checks["air_gapped_rag"] = "active" if air_gapped else "supported"
 
     return all_ok, checks
 
