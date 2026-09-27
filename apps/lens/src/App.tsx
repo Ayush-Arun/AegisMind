@@ -8,6 +8,7 @@ import { Notes } from "@/components/Notes";
 import { LocalTools } from "@/components/LocalTools";
 import { KnowledgeGraph } from "@/components/graph/KnowledgeGraph";
 import { ApprovalPanel } from "@/components/approval/ApprovalPanel";
+import { Memory } from "@/components/Memory";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ResourcePicker } from "@/components/ResourcePicker";
 import { Button } from "@/components/ui/button";
@@ -26,9 +27,10 @@ import {
   Terminal,
   GitBranch,
   CheckCircle,
+  Brain,
 } from "lucide-react";
 
-type ActiveTab = "chat" | "search" | "connectors" | "access" | "datasets" | "notes" | "tools" | "graph" | "approval";
+type ActiveTab = "chat" | "search" | "connectors" | "access" | "datasets" | "notes" | "tools" | "graph" | "approval" | "memory";
 
 export function App() {
   const [activeTab, setActiveTab] = React.useState<ActiveTab>("chat");
@@ -169,6 +171,18 @@ export function App() {
               <CheckCircle className="h-3.5 w-3.5 text-primary" />
               Approvals
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("memory")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors ${
+                activeTab === "memory"
+                  ? "bg-secondary text-foreground font-medium shadow-xs"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              <Brain className="h-3.5 w-3.5 text-primary" />
+              Memory
+            </button>
             </nav>
           </div>
 
@@ -263,6 +277,7 @@ export function App() {
         {activeTab === "tools" && <LocalTools />}
         {activeTab === "graph" && <KnowledgeGraph />}
         {activeTab === "approval" && <ApprovalPanel />}
+        {activeTab === "memory" && <Memory currentUserId={currentUserId} currentTenantId={currentTenantId} />}
       </main>
 
       {/* Footer Status Bar */}

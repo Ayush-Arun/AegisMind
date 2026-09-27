@@ -2,12 +2,10 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getPendingActions, decideAction, type PendingAction } from "@/lib/api";
+import { getPendingActions, decideAction, type PendingActionData } from "@/lib/api";
 import {
   ShieldCheck,
-  ShieldAlert,
   Clock,
-  AlertTriangle,
   Check,
   X,
   RefreshCw,
@@ -17,7 +15,7 @@ import {
 } from "lucide-react";
 
 export function ApprovalPanel() {
-  const [pendingActions, setPendingActions] = React.useState<PendingAction[]>([]);
+  const [pendingActions, setPendingActions] = React.useState<PendingActionData[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [processingId, setProcessingId] = React.useState<string | null>(null);
 
@@ -25,7 +23,7 @@ export function ApprovalPanel() {
     setIsLoading(true);
     try {
       const data = await getPendingActions();
-      setPendingActions(data.pending_actions || data.actions || []);
+      setPendingActions(data.pending_actions || []);
     } catch {
       // Ignore
     } finally {
@@ -58,7 +56,7 @@ export function ApprovalPanel() {
       execute: { bg: "bg-orange-500/10", text: "text-orange-400", label: "EXECUTE" },
       dangerous: { bg: "bg-red-500/10", text: "text-red-400", label: "DANGEROUS" },
     };
-    const style = styles[riskLevel] || styles.read;
+    const style = styles[riskLevel as keyof typeof styles]!;
     return <Badge className={`${style.bg} ${style.text} text-[9px]`}>{style.label}</Badge>;
   };
 
@@ -141,7 +139,7 @@ export function ApprovalPanel() {
                       </div>
                       <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
                         <Clock className="h-3 w-3" />
-                        Proposed by {action.proposal.proposed_by} · {action.wait_seconds}s ago
+                        Proposed by {action.proposal.id?.split("-")[0] ?? "unknown"} · {action.wait_seconds}s ago
                       </div>
                     </div>
                   </div>

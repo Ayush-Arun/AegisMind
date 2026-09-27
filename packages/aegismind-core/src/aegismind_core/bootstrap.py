@@ -10,6 +10,7 @@ from aegismind_types import ACL, Chunk
 
 from aegismind_core.registry import list_adapters, resolve_adapter
 from aegismind_core.routes import CoreState
+from aegismind_core.memory import ConversationMemory
 from aegismind_graph.engine import KnowledgeGraphEngine
 
 logger = logging.getLogger(__name__)
@@ -219,5 +220,12 @@ async def init_default_core_state() -> CoreState:
             logger.info("Seeded default knowledge graph")
     except Exception as exc:
         logger.warning("Could not seed graph: %s", exc)
+
+    # Initialize conversation memory
+    try:
+        state.memory = ConversationMemory(db_path="./storage/memory/memory.db")
+        logger.info("Conversation memory initialized")
+    except Exception as exc:
+        logger.warning("Could not initialize memory: %s", exc)
 
     return state

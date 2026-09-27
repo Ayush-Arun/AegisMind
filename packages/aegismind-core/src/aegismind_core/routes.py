@@ -39,6 +39,7 @@ from aegismind_core.agent import (
 )
 from aegismind_core.approval import ApprovalGate
 from aegismind_core.budgeting import apply_context_budget
+from aegismind_core.memory import ConversationMemory
 from aegismind_core.observability import trace_span
 from aegismind_core.ports.llm import LLMPort
 from aegismind_graph.engine import KnowledgeGraphEngine
@@ -209,9 +210,10 @@ class CoreState:
         self.indexed_resources: list[dict[str, Any]] = []
         self.feedback_entries: list[FeedbackEntry] = []
 
-        # Knowledge graph and approval gate
+        # Knowledge graph, approval gate, and conversation memory
         self.graph_engine = KnowledgeGraphEngine(graph_path="./storage/graph/graph.json")
         self.approval_gate = ApprovalGate(approval_log_path="./storage/approval/approvals.json")
+        self.memory = ConversationMemory(db_path="./storage/memory/memory.db")
 
     def record_audit(
         self,
@@ -385,7 +387,20 @@ def create_routes(state: CoreState) -> APIRouter:
                     top_k=top_k,
                 )
 
-            # Stage 2: Token budgeting and prompt formulation
+            # Stage 2: Retrieve past conversation memory and inject into prompt
+            memory_context = ""
+            try:
+                memory_context = await state.memory.retrieve_context(
+                    query=query,
+                    user_id=effective_principal_id,
+                    tenant_id=tenant_id,
+                    embedder=llm_adapter,
+                    top_k=3,
+                )
+            except Exception as exc:
+                logger.debug("Memory retrieval failed: %s", exc)
+
+            # Stage 2b: Token budgeting and prompt formulation
             llm_adapter = state.llm or get_llm_adapter()
             budget_res = apply_context_budget(
                 query=query,
@@ -396,41 +411,76 @@ def create_routes(state: CoreState) -> APIRouter:
             surviving_results = budget_res.chunks
             trim_notice = budget_res.notice
 
-            if surviving_results:
-                prompt = budget_res.prompt
-                system_prompt = budget_res.system_prompt
-                fallback_answer_text = (
-                    "Could not stream response from local Ollama. Please ensure Ollama is "
-                    "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is available."
-                )
-            elif res.total_candidates_evaluated > 0 and res.authorized_candidates_count == 0:
-                fallback_answer_text = (
-                    f"Access denied: Relevant candidate documents matched query '{query}', but "
-                    f"principal '{effective_principal_id}' lacks viewer authorization. "
-                    "Under AegisMind zero-leakage security, unauthorized content is strictly "
-                    "excluded."
-                )
-                system_prompt = (
-                    "You are AegisMind AI assistant.\n"
-                    "Notice: Matching candidate documents exist in the repository, "
-                    "but the user lacks viewer authorization to read them. Mention this "
-                    "access boundary briefly, then answer the user's question helpfully using "
-                    "general knowledge."
-                )
-                prompt = f"USER QUESTION:\n{query}"
+            if memory_context:
+                if surviving_results:
+                    prompt = memory_context + "\n" + budget_res.prompt
+                    system_prompt = budget_res.system_prompt
+                    fallback_answer_text = (
+                        "Could not stream response from local Ollama. Please ensure Ollama is "
+                        "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is available."
+                    )
+                elif res.total_candidates_evaluated > 0 and res.authorized_candidates_count == 0:
+                    fallback_answer_text = (
+                        f"Access denied: Relevant candidate documents matched query '{query}', but "
+                        f"principal '{effective_principal_id}' lacks viewer authorization. "
+                        "Under AegisMind zero-leakage security, unauthorized content is strictly "
+                        "excluded."
+                    )
+                    system_prompt = (
+                        "You are AegisMind AI assistant.\n"
+                        "Notice: Matching candidate documents exist in the repository, "
+                        "but the user lacks viewer authorization to read them. Mention this "
+                        "access boundary briefly, then answer the user's question helpfully using "
+                        "general knowledge."
+                    )
+                    prompt = memory_context + f"\nUSER QUESTION:\n{query}"
+                else:
+                    fallback_answer_text = (
+                        "Could not stream response from local Ollama. Please ensure Ollama is "
+                        "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is available."
+                    )
+                    system_prompt = (
+                        "You are AegisMind, a professional, intelligent, and helpful AI assistant.\n"
+                        "Answer the user's question clearly, accurately, and thoroughly."
+                    )
+                    prompt = memory_context + f"\nUSER QUESTION:\n{query}"
             else:
-                fallback_answer_text = (
-                    "Could not stream response from local Ollama. Please ensure Ollama is "
-                    "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is available."
-                )
-                system_prompt = (
-                    "You are AegisMind, a professional, intelligent, and helpful AI assistant.\n"
-                    "Answer the user's question clearly, accurately, and thoroughly."
-                )
-                prompt = f"USER QUESTION:\n{query}"
+                if surviving_results:
+                    prompt = budget_res.prompt
+                    system_prompt = budget_res.system_prompt
+                    fallback_answer_text = (
+                        "Could not stream response from local Ollama. Please ensure Ollama is "
+                        "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is available."
+                    )
+                elif res.total_candidates_evaluated > 0 and res.authorized_candidates_count == 0:
+                    fallback_answer_text = (
+                        f"Access denied: Relevant candidate documents matched query '{query}', but "
+                        f"principal '{effective_principal_id}' lacks viewer authorization. "
+                        "Under AegisMind zero-leakage security, unauthorized content is strictly "
+                        "excluded."
+                    )
+                    system_prompt = (
+                        "You are AegisMind AI assistant.\n"
+                        "Notice: Matching candidate documents exist in the repository, "
+                        "but the user lacks viewer authorization to read them. Mention this "
+                        "access boundary briefly, then answer the user's question helpfully using "
+                        "general knowledge."
+                    )
+                    prompt = f"USER QUESTION:\n{query}"
+                else:
+                    fallback_answer_text = (
+                        "Could not stream response from local Ollama. Please ensure Ollama is "
+                        "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is available."
+                    )
+                    system_prompt = (
+                        "You are AegisMind, a professional, intelligent, and helpful AI assistant.\n"
+                        "Answer the user's question clearly, accurately, and thoroughly."
+                    )
+                    prompt = f"USER QUESTION:\n{query}"
 
             # Stage 3: Stream tokens from LLMPort with fallback
             llm_streamed = False
+            streamed_response = ""
             try:
                 async for token in llm_adapter.stream_generate(
                     prompt=prompt,
@@ -438,10 +488,23 @@ def create_routes(state: CoreState) -> APIRouter:
                     model=model,
                 ):
                     llm_streamed = True
+                    streamed_response += token
                     data = json.dumps({"token": token})
                     yield f"event: token\ndata: {data}\n\n"
             except Exception as exc:
                 logger.debug("LLM streaming skipped: %s", exc)
+
+            if llm_streamed and streamed_response:
+                try:
+                    await state.memory.record_conversation(
+                        user_id=effective_principal_id,
+                        tenant_id=tenant_id,
+                        query=query,
+                        response=streamed_response,
+                        embedder=llm_adapter,
+                    )
+                except Exception as exc:
+                    logger.debug("Memory storage failed: %s", exc)
 
             if not llm_streamed:
                 words = fallback_answer_text.split(" ")
@@ -474,6 +537,55 @@ def create_routes(state: CoreState) -> APIRouter:
             yield f"event: done\ndata: {done_payload}\n\n"
 
         return StreamingResponse(sse_event_stream(), media_type="text/event-stream")
+
+    # 4. GET /api/v1/memory/stats — Memory statistics
+    @router.get("/memory/stats")
+    async def memory_stats(
+        user_id: str = Query("anonymous", description="User ID"),
+        tenant_id: str = Query("corp-default", description="Tenant ID"),
+    ) -> dict[str, int]:
+        return state.memory.get_stats(user_id, tenant_id)
+
+    # 5. GET /api/v1/memory/history — Conversation history
+    @router.get("/memory/history")
+    async def memory_history(
+        user_id: str = Query("anonymous", description="User ID"),
+        tenant_id: str = Query("corp-default", description="Tenant ID"),
+        limit: int = Query(50, ge=1, le=200),
+    ) -> list[dict[str, Any]]:
+        return state.memory.get_history(user_id, tenant_id, limit)
+
+    # 6. GET /api/v1/memory/search — Search past conversations
+    @router.get("/memory/search")
+    async def memory_search(
+        q: str = Query(..., description="Search query"),
+        user_id: str = Query("anonymous", description="User ID"),
+        tenant_id: str = Query("corp-default", description="Tenant ID"),
+        top_k: int = Query(5, ge=1, le=20),
+    ) -> list[dict[str, Any]]:
+        results = state.memory.get_history(user_id, tenant_id, limit=top_k * 2)
+        filtered = [r for r in results if q.lower() in r["query"].lower() or q.lower() in r["response"].lower()]
+        return filtered[:top_k]
+
+    # 7. DELETE /api/v1/memory/clear — Clear memory for a user
+    @router.delete("/memory/clear")
+    async def memory_clear(
+        user_id: str = Query("anonymous", description="User ID"),
+        tenant_id: str = Query("corp-default", description="Tenant ID"),
+    ) -> dict[str, str]:
+        state.memory.clear(user_id, tenant_id)
+        return {"status": "cleared"}
+
+    # 8. POST /api/v1/memory/ingest — Record a conversation turn
+    @router.post("/memory/ingest")
+    async def memory_ingest(
+        user_id: str = Query("anonymous", description="User ID"),
+        tenant_id: str = Query("corp-default", description="Tenant ID"),
+        query: str = Query(..., description="User question"),
+        response: str = Query(..., description="Assistant response"),
+    ) -> dict[str, str]:
+        state.memory.record_conversation(user_id, tenant_id, query, response)
+        return {"status": "stored"}
 
     # 3. GET|POST /api/v1/connectors: Spec discovery, configuration, sync triggering
     @router.get("/connectors")

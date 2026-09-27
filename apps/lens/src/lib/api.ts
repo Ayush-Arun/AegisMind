@@ -766,3 +766,67 @@ export async function proposeAction(params: { tool_name: string; arguments: Reco
   return data as { id: string; status: string };
 }
 
+// --- Long-Term Conversation Memory API ---
+
+export interface MemoryEntry {
+  id: string;
+  query: string;
+  response: string;
+  created_at: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface MemoryStats {
+  total: number;
+  today: number;
+}
+
+export async function memoryStats(userId: string, tenantId: string): Promise<MemoryStats> {
+  try {
+    const res = await fetch(`${API_BASE}/memory/stats?user_id=${encodeURIComponent(userId)}&tenant_id=${encodeURIComponent(tenantId)}`);
+    if (!res.ok) return { total: 0, today: 0 };
+    return res.json() as Promise<MemoryStats>;
+  } catch {
+    return { total: 0, today: 0 };
+  }
+}
+
+export async function memoryHistory(userId: string, tenantId: string, limit?: number): Promise<MemoryEntry[]> {
+  try {
+    const url = new URL(`${API_BASE}/memory/history`);
+    url.searchParams.set("user_id", userId);
+    url.searchParams.set("tenant_id", tenantId);
+    if (limit) url.searchParams.set("limit", String(limit));
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    return res.json() as Promise<MemoryEntry[]>;
+  } catch {
+    return [];
+  }
+}
+
+export async function memorySearch(q: string, userId: string, tenantId: string, top_k?: number): Promise<MemoryEntry[]> {
+  try {
+    const url = new URL(`${API_BASE}/memory/search`);
+    url.searchParams.set("q", q);
+    url.searchParams.set("user_id", userId);
+    url.searchParams.set("tenant_id", tenantId);
+    if (top_k) url.searchParams.set("top_k", String(top_k));
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    return res.json() as Promise<MemoryEntry[]>;
+  } catch {
+    return [];
+  }
+}
+
+export async function memoryClear(userId: string, tenantId: string): Promise<{ status: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/memory/clear?user_id=${encodeURIComponent(userId)}&tenant_id=${encodeURIComponent(tenantId)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`Clear failed: ${res.statusText}`);
+    return res.json() as Promise<{ status: string }>;
+  } catch {
+    throw new Error("Failed to clear memory");
+  }
+}
+

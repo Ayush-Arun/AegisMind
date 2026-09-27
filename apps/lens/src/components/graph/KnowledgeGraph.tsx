@@ -11,7 +11,6 @@ import {
   Lightbulb,
   GitBranch,
   CircleDot,
-  ArrowRight,
 } from "lucide-react";
 
 const entityTypeIcons: Record<string, React.ReactNode> = {
@@ -202,8 +201,4 @@ export function KnowledgeGraph() {
       )}
     </div>
   );
-}
-
-function useMemo<T>(factory: () => T, deps: any[]): T {
-  return React.useMemo(factory, deps);
 }
