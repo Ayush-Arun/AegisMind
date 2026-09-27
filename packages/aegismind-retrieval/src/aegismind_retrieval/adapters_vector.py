@@ -45,7 +45,7 @@ class MemoryVectorStoreAdapter(VectorStorePort):
 
     def _matches_filter(self, chunk: Chunk, pre_filter: dict[str, Any] | None) -> bool:
         # Exclude soft-deleted chunks (tombstones)
-        if chunk.is_deleted:
+        if getattr(chunk, "is_deleted", False):
             return False
 
         if not pre_filter:
@@ -63,7 +63,9 @@ class MemoryVectorStoreAdapter(VectorStorePort):
         if allowed_groups is not None:
             group_set = {str(g) for g in allowed_groups}
             chunk_groups = set(chunk.metadata.get("groups", []))
-            for p in chunk.acl.allowed_principals:
+            acl = getattr(chunk, "acl", None)
+            allowed_principals = getattr(acl, "allowed_principals", []) if acl else []
+            for p in allowed_principals:
                 if p.startswith("group:"):
                     chunk_groups.add(p[len("group:") :])
                 else:
@@ -169,6 +171,19 @@ class MemoryVectorStoreAdapter(VectorStorePort):
         # Fallback if neither provided: return initial items with default score
         return [ScoredChunk(chunk=c, score=1.0) for c in filtered[:top_k]]
 
+    async def search(
+        self,
+        query_embedding: list[float],
+        limit: int,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[ScoredChunk]:
+        """Perform dense vector search matching query_embedding."""
+        return await self.query_dense(
+            vector=query_embedding,
+            pre_filter=metadata_filter,
+            top_k=limit,
+        )
+
     async def delete(self, chunk_ids: list[str]) -> bool:
         """Delete chunks by ID."""
         deleted = False
@@ -180,7 +195,9 @@ class MemoryVectorStoreAdapter(VectorStorePort):
     async def get_by_document(self, document_id: str) -> list[Chunk]:
         """Retrieve active chunks for a document."""
         return [
-            c for c in self._chunks.values() if c.document_id == document_id and not c.is_deleted
+            c
+            for c in self._chunks.values()
+            if c.document_id == document_id and not getattr(c, "is_deleted", False)
         ]
 
     async def soft_delete_document(self, document_id: str) -> int:
@@ -188,7 +205,7 @@ class MemoryVectorStoreAdapter(VectorStorePort):
         count = 0
         now = datetime.now(UTC)
         for cid, chunk in list(self._chunks.items()):
-            if chunk.document_id == document_id and not chunk.is_deleted:
+            if chunk.document_id == document_id and not getattr(chunk, "is_deleted", False):
                 self._chunks[cid] = chunk.model_copy(update={"is_deleted": True, "deleted_at": now})
                 count += 1
         logger.debug("Soft-deleted %d chunks for document %s", count, document_id)
@@ -210,7 +227,6 @@ class MemoryVectorStoreAdapter(VectorStorePort):
             del self._chunks[cid]
         logger.info("Vacuumed %d tombstoned chunks from memory store", len(to_delete))
         return len(to_delete)
-
 
 
 class QdrantVectorStoreAdapter(VectorStorePort):

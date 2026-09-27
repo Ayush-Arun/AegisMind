@@ -258,4 +258,3 @@ class MockRerankerAdapter(RerankerPort):
 
         scored.sort(key=lambda sc: sc.score, reverse=True)
         return scored[:top_n]
-

@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.entry-points."aegismind.vector_store"]
-memory = "aegismind_adapters.vector_memory:MemoryVectorStoreAdapter"
+memory = "aegismind_retrieval.adapters_vector:MemoryVectorStoreAdapter"
 qdrant = "aegismind_retrieval.adapters_vector:QdrantVectorStoreAdapter"
 sqlite = "aegismind_retrieval.adapters_sqlite_vector:SqliteVectorStoreAdapter"
 
