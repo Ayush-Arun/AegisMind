@@ -398,6 +398,9 @@ def create_routes(state: CoreState) -> APIRouter:
                     embedder=llm_adapter,
                     top_k=3,
                 )
+                # Strip image paths from memory context to prevent LLM errors
+                import re
+                memory_context = re.sub(r'.*\.(?:png|jpg|jpeg|gif|bmp|webp|tiff|svg).*', '', memory_context, flags=re.IGNORECASE)
             except Exception as exc:
                 logger.debug("Memory retrieval failed: %s", exc)
 

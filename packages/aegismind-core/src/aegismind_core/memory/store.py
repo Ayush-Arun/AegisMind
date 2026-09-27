@@ -2,12 +2,30 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Optional
 
 import sqlite3
 
 logger = logging.getLogger(__name__)
+
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg", ".ico", ".raw", ".cr2", ".nef", ".arw"}
+
+
+def _is_image_path(path: str) -> bool:
+    return Path(path).suffix.lower() in IMAGE_EXTENSIONS
+
+@staticmethod
+def _filter_image_content(text: str) -> str:
+    """Remove lines containing image file paths from text."""
+    lines = []
+    for line in text.split("\n"):
+        if _is_image_path(line):
+            continue
+        lines.append(line)
+    return "\n".join(lines) if lines else text
 
 
 class MemoryStore:

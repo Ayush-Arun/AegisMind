@@ -48,11 +48,24 @@ class MemoryRetriever:
         lines = ["\n\n=== PAST CONVERSATION MEMORY ==="]
         lines.append(f"Found {len(results)} previous conversations:")
         for idx, entry in enumerate(results, start=1):
+            # Filter out entries containing image paths
+            query_filtered = self._filter_image_content(entry["query"])
+            response_filtered = self._filter_image_content(entry["response"])
             lines.append(f"\n[{idx}] {entry['created_at']}")
-            lines.append(f"  User asked: {entry['query']}")
-            lines.append(f"  Assistant answered: {entry['response'][:200]}")
+            lines.append(f"  User asked: {query_filtered}")
+            lines.append(f"  Assistant answered: {response_filtered[:200]}")
         lines.append("\n=== END PAST CONVERSATION MEMORY ===\n")
         return "\n".join(lines)
+
+    @staticmethod
+    def _filter_image_content(text: str) -> str:
+        """Remove lines containing image file paths."""
+        lines = []
+        for line in text.split("\n"):
+            if any(ext in line.lower() for ext in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg"}):
+                continue
+            lines.append(line)
+        return "\n".join(lines) if lines else text
 
     async def retrieve_for_prompt(
         self,
