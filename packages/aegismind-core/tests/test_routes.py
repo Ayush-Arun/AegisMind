@@ -154,3 +154,44 @@ async def test_resources_and_group_aliases(test_setup: tuple[CoreState, Retrieva
         list_alias_resp = await client.get("/api/v1/group-aliases")
         assert list_alias_resp.status_code == 200
         assert list_alias_resp.json()["aliases"]["okta_devs"] == "engineering"
+
+
+@pytest.mark.asyncio
+async def test_dataset_ingestion_and_individual_chat() -> None:
+    """Verify document file ingestion, resource indexing, and individual dataset chat."""
+    app = create_app()
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # Ingest document text
+        ingest_resp = await client.post(
+            "/api/v1/documents",
+            json={
+                "title": "Quarterly Financial Analysis",
+                "content": "Revenue grew by 24% to 12.8M with 82% gross margins.",
+                "tenant_id": "corp-default",
+                "allowed_users": ["alice", "bob"],
+            },
+        )
+        assert ingest_resp.status_code == 200
+        ingest_data = ingest_resp.json()
+        assert ingest_data["status"] == "indexed"
+        doc_id = ingest_data["document_id"]
+        assert ingest_data["chunk_count"] >= 1
+
+        # Query individual dataset chatbox
+        chat_resp = await client.post(
+            f"/api/v1/datasets/{doc_id}/chat",
+            json={
+                "query": "What was the revenue growth and gross margin?",
+                "document_id": doc_id,
+                "title": "Quarterly Financial Analysis",
+                "user_id": "alice",
+                "tenant_id": "corp-default",
+            },
+        )
+        assert chat_resp.status_code == 200
+        chat_data = chat_resp.json()
+        assert chat_data["document_id"] == doc_id
+        assert chat_data["memory_saved"] is True
+        assert len(chat_data["answer"]) > 0

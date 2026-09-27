@@ -78,7 +78,9 @@ export interface IngestDocumentResponse {
   status: string;
   document_id: string;
   title: string;
-  chunk_count: number;
+  chunk_count?: number;
+  chunks_count?: number;
+  content?: string;
   allowed_users: string[];
 }
 
@@ -107,13 +109,34 @@ export interface StudyResponse {
   memory_saved?: boolean;
 }
 
+export interface DatasetChatParams {
+  document_id?: string;
+  title?: string;
+  content?: string;
+  query: string;
+  user_id?: string;
+  tenant_id?: string;
+}
+
+export interface DatasetChatResponse {
+  document_id: string;
+  title: string;
+  answer: string;
+  memory_saved?: boolean;
+}
+
 export interface ResourceItem {
   id: string;
   title: string;
-  type: string;
-  connector: string;
+  type?: string;
+  connector?: string;
   last_indexed?: string;
   chunk_count?: number;
+  chunks_count?: number;
+  content?: string;
+  file_type?: string;
+  page_count?: number;
+  char_count?: number;
   allowed_users?: string[];
   uri?: string;
 }
@@ -419,6 +442,30 @@ export async function studyDocument(params: StudyParams): Promise<StudyResponse>
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(`Study query failed: ${response.statusText} (${errText})`);
+  }
+  return response.json();
+}
+
+export async function chatWithDataset(params: DatasetChatParams): Promise<DatasetChatResponse> {
+  const docId = params.document_id || "default";
+  const response = await fetch(`${API_BASE}/datasets/${encodeURIComponent(docId)}/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: params.query,
+      document_id: params.document_id,
+      title: params.title,
+      content: params.content,
+      user_id: params.user_id || "alice",
+      tenant_id: params.tenant_id || "corp-default",
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Dataset chat query failed: ${response.statusText} (${errText})`);
   }
   return response.json();
 }
