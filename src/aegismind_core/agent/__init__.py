@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from aegismind_core.agent.activity import (
+    LocalToolActivityRecorder,
+    ToolActivityCategory,
+    ToolActivityEvent,
+    ToolActivityStatus,
+    infer_tool_category,
+    sanitize_parameters,
+)
 from aegismind_core.agent.loop import (
     OLLAMA_TOOLS_SCHEMA,
     AgentRunResult,
@@ -23,6 +31,7 @@ __all__ = [
     "AgentRunResult",
     "LocalKnowledgeSearchAdapter",
     "LocalKnowledgeSearchPort",
+    "LocalToolActivityRecorder",
     "NoteCreatorAdapter",
     "NoteCreatorPort",
     "OLLAMA_TOOLS_SCHEMA",
@@ -32,4 +41,9 @@ __all__ = [
     "SystemFileReaderAdapter",
     "SystemFileReaderPort",
     "ToolActionResult",
+    "ToolActivityCategory",
+    "ToolActivityEvent",
+    "ToolActivityStatus",
+    "infer_tool_category",
+    "sanitize_parameters",
 ]

@@ -741,6 +741,22 @@ export interface NoteDetail {
   raw: string;
 }
 
+export interface LocalToolActivityEvent {
+  event_id: string;
+  timestamp: string;
+  tool_name: string;
+  category: "filesystem" | "knowledge" | "sandbox" | "notes" | "system";
+  parameters: Record<string, unknown>;
+  status: "running" | "success" | "failed";
+  duration_ms: number;
+  agent_id: string;
+  source: string;
+  approval_required: boolean;
+  error?: string | null;
+  result_summary?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
 export interface AgentToolEvent {
   id: string;
   timestamp: string;
@@ -779,6 +795,81 @@ export async function getNoteDetail(slug: string): Promise<NoteDetail | null> {
   } catch {
     return null;
   }
+}
+
+export async function getLocalToolActivity(
+  category?: string,
+  status?: string,
+  limit = 50,
+): Promise<LocalToolActivityEvent[]> {
+  try {
+    const params = new URLSearchParams();
+    if (category && category !== "All") params.set("category", category.toLowerCase());
+    if (status && status !== "All") params.set("status", status.toLowerCase());
+    params.set("limit", String(limit));
+    const qs = params.toString();
+
+    let res = await fetch(`${API_BASE}/local-tools/activity${qs ? `?${qs}` : ""}`);
+    if (!res.ok) {
+      res = await fetch(`/api/local-tools/activity${qs ? `?${qs}` : ""}`);
+    }
+    if (!res.ok) {
+      res = await fetch(`${API_BASE}/agent/tools`);
+    }
+    if (!res.ok) return [];
+
+    const raw = (await res.json()) as Array<Record<string, unknown>>;
+    return raw.map((item) => {
+      const eventId = String(item.event_id || item.id || `evt-${Math.random()}`);
+      const rawTool = String(item.tool_name || item.action || "unknown").replace("invoke_", "");
+      const cat = (item.category as LocalToolActivityEvent["category"]) || "system";
+      const meta = (item.metadata as Record<string, unknown>) || {};
+      const paramsObj = (item.parameters as Record<string, unknown>) || (meta.arguments as Record<string, unknown>) || (meta.command ? { cmd: meta.command } : {});
+      const stat: "running" | "success" | "failed" =
+        item.status === "running"
+          ? "running"
+          : item.status === "failed" || meta.success === false
+          ? "failed"
+          : "success";
+      const dur = typeof item.duration_ms === "number" ? item.duration_ms : typeof meta.duration_ms === "number" ? meta.duration_ms : 0;
+      const resSum = (item.result_summary as string) || (meta.result_summary as string) || (meta.output_excerpt as string) || null;
+      const err = (item.error as string) || (meta.reason as string) || null;
+
+      return {
+        event_id: eventId,
+        timestamp: String(item.timestamp || new Date().toISOString()),
+        tool_name: rawTool,
+        category: cat,
+        parameters: paramsObj,
+        status: stat,
+        duration_ms: dur,
+        agent_id: String(item.agent_id || item.principal_id || "local_agent"),
+        source: String(item.source || "local"),
+        approval_required: Boolean(item.approval_required),
+        error: err,
+        result_summary: resSum,
+        metadata: meta,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function clearLocalToolActivity(): Promise<boolean> {
+  try {
+    let res = await fetch(`${API_BASE}/local-tools/activity`, { method: "DELETE" });
+    if (!res.ok) {
+      res = await fetch(`/api/local-tools/activity`, { method: "DELETE" });
+    }
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export function getLocalToolEventsUrl(): string {
+  return `${API_BASE}/local-tools/events`;
 }
 
 export async function listAgentTools(): Promise<AgentToolEvent[]> {

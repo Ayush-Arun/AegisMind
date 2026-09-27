@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -10,6 +12,7 @@ from typing import Any, cast
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from aegismind_core.agent.activity import LocalToolActivityRecorder
 from aegismind_core.agent.ports import (
     LocalKnowledgeSearchPort,
     NoteCreatorPort,
@@ -17,6 +20,7 @@ from aegismind_core.agent.ports import (
     SystemFileReaderPort,
     ToolActionResult,
 )
+from aegismind_core.agent.tools import IMAGE_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +135,7 @@ class SovereignAgentLoop:
         ollama_url: str | None = None,
         model: str | None = None,
         audit_recorder: Callable[..., Any] | None = None,
+        activity_recorder: LocalToolActivityRecorder | None = None,
         max_tool_calls_per_turn: int = 6,
         chat_executor: Callable[[list[dict[str, Any]], list[dict[str, Any]]], Any] | None = None,
     ) -> None:
@@ -143,10 +148,22 @@ class SovereignAgentLoop:
         ).rstrip("/")
         self.model = model or os.environ.get("OLLAMA_AGENT_MODEL") or "qwen2.5:7b"
         self.audit_recorder = audit_recorder
+        self.activity_recorder = activity_recorder
         self.max_tool_calls_per_turn = max_tool_calls_per_turn
         self.chat_executor = chat_executor
 
     async def _execute_tool(self, name: str, args: dict[str, Any], query: str) -> ToolActionResult:
+        approval_required = name in ("run_local_command", "create_note")
+        active_event = None
+        if self.activity_recorder:
+            active_event = self.activity_recorder.record_start(
+                tool_name=name,
+                parameters=args,
+                agent_id="local_agent",
+                approval_required=approval_required,
+            )
+
+        start_time = time.perf_counter()
         timestamp_str = datetime.now(UTC).isoformat()
         res_text = ""
         success = True
@@ -187,6 +204,17 @@ class SovereignAgentLoop:
             res_text = f"TOOL_EXECUTION_ERROR: {exc}"
             success = False
 
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+
+        if self.activity_recorder and active_event:
+            self.activity_recorder.record_complete(
+                event_id=active_event.event_id,
+                status="success" if success else "failed",
+                duration_ms=duration_ms,
+                result_summary=res_text[:300],
+                error=res_text if not success else None,
+            )
+
         action_result = ToolActionResult(
             tool_name=name,
             arguments=args,
@@ -204,10 +232,38 @@ class SovereignAgentLoop:
                     "arguments": args,
                     "success": success,
                     "result_summary": res_text[:200],
+                    "duration_ms": round(duration_ms, 2),
                 },
             )
 
         return action_result
+
+    @staticmethod
+    def _filter_image_content(text: str) -> str:
+        """Filter out image-related content from tool results."""
+        lines = []
+        for line in text.split("\n"):
+            if IMAGE_EXTENSIONS and any(ext in line.lower() for ext in IMAGE_EXTENSIONS):
+                continue
+            lines.append(line)
+        return "\n".join(lines) if lines else text
+
+    @staticmethod
+    def _sanitize_text(text: str) -> str:
+        """Remove ANSI escape codes, control characters, and excessive Unicode."""
+        # Remove ANSI escape codes
+        text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+        # Remove control characters except newlines, tabs, carriage returns
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+        # Normalize excessive Unicode (replace common problematic chars)
+        text = text.replace("\u200b", "")  # Zero-width space
+        text = text.replace("\u200c", "")  # Zero-width non-joiner
+        text = text.replace("\u200d", "")  # Zero-width joiner
+        text = text.replace("\ufeff", "")  # BOM
+        # Replace special quote characters with ASCII
+        text = text.replace("\u201c", '"').replace("\u201d", '"')
+        text = text.replace("\u2018", "'").replace("\u2019", "'")
+        return text
 
     async def _call_model(
         self,
@@ -308,11 +364,14 @@ class SovereignAgentLoop:
                 actions_taken.append(action_result)
                 total_calls += 1
 
+                # Filter out image-related content from tool results
+                filtered_result = self._filter_image_content(action_result.result)
+
                 # Feed tool result back into conversation history
                 messages.append(
                     {
                         "role": "tool",
-                        "content": action_result.result,
+                        "content": filtered_result,
                         "name": tool_name,
                     }
                 )
@@ -330,6 +389,7 @@ class SovereignAgentLoop:
         try:
             final_msg = await self._call_model(messages, [])
             final_text = final_msg.get("content", "").strip()
+            final_text = self._sanitize_text(final_text)
         except Exception:
             final_text = (
                 f"Agent executed {total_calls} actions. Summary of findings:\n"

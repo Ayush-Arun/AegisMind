@@ -9,7 +9,7 @@ import re
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from aegismind_connector_sdk.ports import ConnectorPort, ConnectorSpec
 from aegismind_graph.engine import KnowledgeGraphEngine
@@ -28,7 +28,17 @@ from aegismind_types import (
     FeedbackEntry,
     Principal,
 )
-from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,6 +46,7 @@ from aegismind_core.adapters.llm import get_llm_adapter
 from aegismind_core.agent import (
     AgentRunResult,
     LocalKnowledgeSearchAdapter,
+    LocalToolActivityRecorder,
     NoteCreatorAdapter,
     SandboxedCommandRunnerAdapter,
     SovereignAgentLoop,
@@ -352,6 +363,9 @@ class CoreState:
         self.graph_engine = KnowledgeGraphEngine(graph_path="./storage/graph/graph.json")
         self.approval_gate = ApprovalGate(approval_log_path="./storage/approval/approvals.json")
         self.memory = ConversationMemory(db_path="./storage/memory/memory.db")
+        self.activity_recorder = LocalToolActivityRecorder(
+            storage_path="./storage/activity/tool_events.json"
+        )
 
     def record_audit(
         self,
@@ -1588,6 +1602,7 @@ def create_routes(state: CoreState) -> APIRouter:
             command_tool=command_tool,
             model=req.model,
             audit_recorder=state.record_audit,
+            activity_recorder=state.activity_recorder,
         )
 
         result = await agent_loop.run(
@@ -1689,12 +1704,25 @@ def create_routes(state: CoreState) -> APIRouter:
     @router.post("/notes", tags=["notes"])
     async def create_vault_note(req: CreateNoteRequest) -> dict[str, Any]:
         """Save a note into the local markdown vault."""
+        start_t = asyncio.get_event_loop().time()
         adapter = NoteCreatorAdapter(notes_dir=req.notes_dir)
         msg = await adapter.create_note(
             title=req.title,
             content=req.content,
             tags=req.tags,
             source_query=req.source_query,
+        )
+        duration_ms = (asyncio.get_event_loop().time() - start_t) * 1000.0
+        success = not msg.startswith("NOTE_CREATION_FAILED")
+        state.activity_recorder.record_event(
+            tool_name="create_note",
+            parameters={"title": req.title, "tags": req.tags, "notes_dir": req.notes_dir},
+            status="success" if success else "failed",
+            duration_ms=duration_ms,
+            category="notes",
+            approval_required=False,
+            result_summary=msg,
+            error=msg if not success else None,
         )
         return {"status": "created", "message": msg, "title": req.title}
 
@@ -1704,10 +1732,94 @@ def create_routes(state: CoreState) -> APIRouter:
         limit: int = Query(50, ge=1, le=200),
     ) -> list[dict[str, Any]]:
         """Return chronological feed of recent local sovereign agent tool actions."""
+        events = state.activity_recorder.get_events(limit=limit)
+        if events:
+            results = []
+            for ev in events:
+                results.append(
+                    {
+                        "id": ev.event_id,
+                        "event_id": ev.event_id,
+                        "timestamp": ev.timestamp,
+                        "event_type": "agent_tool",
+                        "principal_id": ev.agent_id,
+                        "action": f"invoke_{ev.tool_name}",
+                        "tool_name": ev.tool_name,
+                        "category": ev.category,
+                        "status": ev.status,
+                        "duration_ms": ev.duration_ms,
+                        "source": ev.source,
+                        "approval_required": ev.approval_required,
+                        "error": ev.error,
+                        "result_summary": ev.result_summary,
+                        "metadata": {
+                            "arguments": ev.parameters,
+                            "success": ev.status == "success",
+                            "result_summary": ev.result_summary,
+                            "duration_ms": ev.duration_ms,
+                            "status": ev.status,
+                            "category": ev.category,
+                            "error": ev.error,
+                            **ev.metadata,
+                        },
+                    }
+                )
+            return results
         agent_entries = [
             e.model_dump() for e in reversed(state.audit_log) if e.event_type == "agent_tool"
         ]
         return agent_entries[:limit]
+
+    # 16b. GET /api/v1/local-tools/activity: Historical local tool activity
+    @router.get("/local-tools/activity", tags=["agent"])
+    async def get_local_tools_activity(
+        category: str | None = Query(None, description="Filter by category"),
+        status: str | None = Query(None, description="Filter by status (running, success, failed)"),
+        limit: int = Query(50, ge=1, le=200),
+    ) -> list[dict[str, Any]]:
+        """Return historical local agent tool activity ledger."""
+        events = state.activity_recorder.get_events(category=category, status=status, limit=limit)
+        return [e.model_dump() for e in events]
+
+    # 16c. GET /api/v1/local-tools/events: SSE real-time updates
+    @router.get("/local-tools/events", tags=["agent"])
+    async def get_local_tools_events(request: Request) -> StreamingResponse:
+        """Stream real-time local agent tool activity events via Server-Sent Events."""
+
+        async def event_generator() -> AsyncIterator[str]:
+            queue = state.activity_recorder.subscribe()
+            try:
+                yield ": connected\n\n"
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                        data_str = json.dumps(event.model_dump())
+                        yield f"data: {data_str}\n\n"
+                    except TimeoutError:
+                        yield ": keepalive\n\n"
+            except asyncio.CancelledError:
+                pass
+            finally:
+                state.activity_recorder.unsubscribe(queue)
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # 16d. DELETE /api/v1/local-tools/activity: Clear activity history
+    @router.delete("/local-tools/activity", tags=["agent"])
+    async def clear_local_tools_activity() -> dict[str, Any]:
+        """Clear local agent tool activity ledger."""
+        state.activity_recorder.clear()
+        return {"status": "cleared", "count": 0}
 
     # 17. GET /api/v1/graph/nodes: Query knowledge graph
     @router.get("/graph/nodes", tags=["graph"])
@@ -1730,7 +1842,7 @@ def create_routes(state: CoreState) -> APIRouter:
 
     @router.get("/graph/stats", tags=["graph"])
     async def graph_stats() -> dict[str, Any]:
-        return state.graph_engine.get_stats()
+        return cast(dict[str, Any], state.graph_engine.get_stats())
 
     @router.get("/graph/query", tags=["graph"])
     async def graph_query(
@@ -1796,7 +1908,7 @@ def create_routes(state: CoreState) -> APIRouter:
     # 21. GET /api/v1/approval/stats
     @router.get("/approval/stats", tags=["approval"])
     async def approval_stats() -> dict[str, Any]:
-        return state.approval_gate.get_stats()
+        return cast(dict[str, Any], state.approval_gate.get_stats())
 
     return router
 

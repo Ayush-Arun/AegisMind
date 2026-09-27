@@ -12,6 +12,7 @@ from typing import Any
 
 from aegismind_retrieval.ports import EmbedderPort, VectorStorePort
 
+from aegismind_core.agent.activity import LocalToolActivityRecorder
 from aegismind_core.agent.ports import (
     LocalKnowledgeSearchPort,
     NoteCreatorPort,
@@ -196,11 +197,13 @@ class SandboxedCommandRunnerAdapter(SandboxedCommandRunnerPort):
     def __init__(
         self,
         audit_recorder: Callable[..., Any] | None = None,
+        activity_recorder: LocalToolActivityRecorder | None = None,
         working_dir: str | Path | None = None,
         timeout_seconds: float = 10.0,
         output_limit_bytes: int = 100 * 1024,
     ) -> None:
         self.audit_recorder = audit_recorder
+        self.activity_recorder = activity_recorder
         self.working_dir = Path(working_dir).resolve() if working_dir else Path.cwd()
         self.timeout_seconds = timeout_seconds
         self.output_limit_bytes = output_limit_bytes
@@ -236,6 +239,17 @@ class SandboxedCommandRunnerAdapter(SandboxedCommandRunnerPort):
                         action="run_local_command_rejected",
                         metadata={"command": clean_cmd, "reason": "forbidden_metacharacter"},
                     )
+                if self.activity_recorder:
+                    self.activity_recorder.record_event(
+                        tool_name="run_local_command",
+                        parameters={"cmd": clean_cmd},
+                        status="failed",
+                        duration_ms=0.0,
+                        category="sandbox",
+                        approval_required=False,
+                        error="forbidden_metacharacter",
+                        result_summary=err_msg,
+                    )
                 return err_msg
 
         # 2. Parse into argv without invoking a shell
@@ -257,6 +271,17 @@ class SandboxedCommandRunnerAdapter(SandboxedCommandRunnerPort):
                     principal_id="local_agent",
                     action="run_local_command_rejected",
                     metadata={"command": clean_cmd, "reason": "not_allowlisted"},
+                )
+            if self.activity_recorder:
+                self.activity_recorder.record_event(
+                    tool_name="run_local_command",
+                    parameters={"cmd": clean_cmd},
+                    status="failed",
+                    duration_ms=0.0,
+                    category="sandbox",
+                    approval_required=False,
+                    error="not_allowlisted",
+                    result_summary=err_msg,
                 )
             return err_msg
 

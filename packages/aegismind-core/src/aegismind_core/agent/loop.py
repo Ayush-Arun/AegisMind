@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -11,6 +12,7 @@ from typing import Any, cast
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from aegismind_core.agent.activity import LocalToolActivityRecorder
 from aegismind_core.agent.ports import (
     LocalKnowledgeSearchPort,
     NoteCreatorPort,
@@ -133,6 +135,7 @@ class SovereignAgentLoop:
         ollama_url: str | None = None,
         model: str | None = None,
         audit_recorder: Callable[..., Any] | None = None,
+        activity_recorder: LocalToolActivityRecorder | None = None,
         max_tool_calls_per_turn: int = 6,
         chat_executor: Callable[[list[dict[str, Any]], list[dict[str, Any]]], Any] | None = None,
     ) -> None:
@@ -145,10 +148,22 @@ class SovereignAgentLoop:
         ).rstrip("/")
         self.model = model or os.environ.get("OLLAMA_AGENT_MODEL") or "qwen2.5:7b"
         self.audit_recorder = audit_recorder
+        self.activity_recorder = activity_recorder
         self.max_tool_calls_per_turn = max_tool_calls_per_turn
         self.chat_executor = chat_executor
 
     async def _execute_tool(self, name: str, args: dict[str, Any], query: str) -> ToolActionResult:
+        approval_required = name in ("run_local_command", "create_note")
+        active_event = None
+        if self.activity_recorder:
+            active_event = self.activity_recorder.record_start(
+                tool_name=name,
+                parameters=args,
+                agent_id="local_agent",
+                approval_required=approval_required,
+            )
+
+        start_time = time.perf_counter()
         timestamp_str = datetime.now(UTC).isoformat()
         res_text = ""
         success = True
@@ -189,6 +204,17 @@ class SovereignAgentLoop:
             res_text = f"TOOL_EXECUTION_ERROR: {exc}"
             success = False
 
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+
+        if self.activity_recorder and active_event:
+            self.activity_recorder.record_complete(
+                event_id=active_event.event_id,
+                status="success" if success else "failed",
+                duration_ms=duration_ms,
+                result_summary=res_text[:300],
+                error=res_text if not success else None,
+            )
+
         action_result = ToolActionResult(
             tool_name=name,
             arguments=args,
@@ -206,6 +232,7 @@ class SovereignAgentLoop:
                     "arguments": args,
                     "success": success,
                     "result_summary": res_text[:200],
+                    "duration_ms": round(duration_ms, 2),
                 },
             )
 

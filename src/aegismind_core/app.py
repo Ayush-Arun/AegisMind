@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request, Response, status
+from fastapi import APIRouter, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 
 from aegismind_core.mcp_server import create_mcp_router
 from aegismind_core.observability import (
@@ -133,6 +135,57 @@ def create_app(state: CoreState | None = None) -> FastAPI:
     # Include API routes
     api_router = create_routes(app_state)
     app.include_router(api_router)
+
+    # Mount direct /api/local-tools alias routes
+    local_tools_router = APIRouter(prefix="/api/local-tools", tags=["agent"])
+
+    @local_tools_router.get("/activity")
+    async def get_direct_local_tools_activity(
+        category: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        events = app_state.activity_recorder.get_events(
+            category=category, status=status, limit=limit
+        )
+        return [e.model_dump() for e in events]
+
+    @local_tools_router.get("/events")
+    async def get_direct_local_tools_events(request: Request) -> StreamingResponse:
+        async def event_generator() -> AsyncIterator[str]:
+            queue = app_state.activity_recorder.subscribe()
+            try:
+                yield ": connected\n\n"
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                        data_str = json.dumps(event.model_dump())
+                        yield f"data: {data_str}\n\n"
+                    except TimeoutError:
+                        yield ": keepalive\n\n"
+            except asyncio.CancelledError:
+                pass
+            finally:
+                app_state.activity_recorder.unsubscribe(queue)
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    @local_tools_router.delete("/activity")
+    async def clear_direct_local_tools_activity() -> dict[str, Any]:
+        app_state.activity_recorder.clear()
+        return {"status": "cleared", "count": 0}
+
+    app.include_router(local_tools_router)
 
     # Include MCP router
     mcp_router = create_mcp_router(pipeline=app_state.retrieval_pipeline, state=app_state)
