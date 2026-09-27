@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import logging
 import json
-from datetime import datetime, UTC, timedelta
-from typing import Any, Callable
+import logging
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from aegismind_approval.models import (
     ActionProposal,
@@ -39,7 +40,6 @@ class ApprovalGate:
 
     def _load(self) -> None:
         """Load pending approvals from persistent storage."""
-        import json
         from pathlib import Path
 
         path = Path(self._approval_log_path)
@@ -61,15 +61,12 @@ class ApprovalGate:
 
     def _save(self) -> None:
         """Persist approval proposals to local storage."""
-        import json
         from pathlib import Path
 
         path = Path(self._approval_log_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "proposals": {
-                pid: p.model_dump() for pid, p in self._proposals.items()
-            },
+            "proposals": {pid: p.model_dump() for pid, p in self._proposals.items()},
             "metadata": {
                 "last_updated": datetime.now(UTC).isoformat(),
                 "pending_count": len(self._proposals),
@@ -124,7 +121,12 @@ class ApprovalGate:
         if self._on_approval_change:
             self._on_approval_change("decide", proposal)
 
-        logger.info("Action %s %s by %s", proposal.id, "approved" if decision.approved else "rejected", decision.reviewed_by)
+        logger.info(
+            "Action %s %s by %s",
+            proposal.id,
+            "approved" if decision.approved else "rejected",
+            decision.reviewed_by,
+        )
         return decision.approved
 
     def get_pending(self) -> list[PendingAction]:
@@ -144,7 +146,9 @@ class ApprovalGate:
                 continue
 
             summary = self._generate_summary(proposal)
-            pending.append(PendingAction(proposal=proposal, wait_seconds=int(wait), summary=summary))
+            pending.append(
+                PendingAction(proposal=proposal, wait_seconds=int(wait), summary=summary)
+            )
 
         pending.sort(key=lambda p: p.wait_seconds, reverse=True)
         return pending
@@ -165,7 +169,13 @@ class ApprovalGate:
         """Return approval statistics."""
         return {
             "total_proposals": len(self._proposals),
-            "pending": sum(1 for p in self._proposals.values() if p.status == ApprovalStatus.PENDING),
-            "approved": sum(1 for p in self._proposals.values() if p.status == ApprovalStatus.APPROVED),
-            "rejected": sum(1 for p in self._proposals.values() if p.status == ApprovalStatus.REJECTED),
+            "pending": sum(
+                1 for p in self._proposals.values() if p.status == ApprovalStatus.PENDING
+            ),
+            "approved": sum(
+                1 for p in self._proposals.values() if p.status == ApprovalStatus.APPROVED
+            ),
+            "rejected": sum(
+                1 for p in self._proposals.values() if p.status == ApprovalStatus.REJECTED
+            ),
         }

@@ -17,7 +17,7 @@ class ApprovalStatus(StrEnum):
 class ActionProposal(BaseModel):
     """A proposed action awaiting human approval before execution."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=False)
 
     id: str = Field(default_factory=lambda: f"app_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}")
     tool_name: str = Field(..., description="Name of the tool to be executed")
