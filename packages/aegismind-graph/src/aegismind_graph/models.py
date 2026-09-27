@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,9 +12,13 @@ class KnowledgeNode(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: str = Field(..., description="Unique node identifier")
-    entity_type: str = Field(..., description="Entity type: person, project, concept, decision, tool")
+    entity_type: str = Field(
+        ..., description="Entity type: person, project, concept, decision, tool"
+    )
     name: str = Field(..., description="Human-readable name")
-    properties: dict[str, Any] = Field(default_factory=dict, description="Flexible entity attributes")
+    properties: dict[str, Any] = Field(
+        default_factory=dict, description="Flexible entity attributes"
+    )
     connections: list[str] = Field(default_factory=list, description="IDs of connected nodes")
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     source_query: str | None = Field(default=None, description="Query that created this node")
@@ -28,7 +31,9 @@ class KnowledgeEdge(BaseModel):
 
     source: str = Field(..., description="Source node ID")
     target: str = Field(..., description="Target node ID")
-    relation: str = Field(..., description="Relationship type: works_on, decided, authored, influenced, depends_on")
+    relation: str = Field(
+        ..., description="Relationship type: works_on, decided, authored, influenced, depends_on"
+    )
     confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Edge confidence score")
     timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     properties: dict[str, Any] = Field(default_factory=dict, description="Edge metadata")

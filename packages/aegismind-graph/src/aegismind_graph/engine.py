@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import logging
 import json
+import logging
 from collections.abc import Callable
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
-from aegismind_graph.models import KnowledgeEdge, KnowledgeNode, GraphQueryResult
+from aegismind_graph.models import GraphQueryResult, KnowledgeEdge, KnowledgeNode
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,6 @@ class KnowledgeGraphEngine:
 
     def _load(self) -> None:
         """Load graph from persistent storage."""
-        import json
         from pathlib import Path
 
         path = Path(self._graph_path)
@@ -46,13 +45,12 @@ class KnowledgeGraphEngine:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             self._nodes = {
-                nid: KnowledgeNode.model_validate(n)
-                for nid, n in data.get("nodes", {}).items()
+                nid: KnowledgeNode.model_validate(n) for nid, n in data.get("nodes", {}).items()
             }
-            self._edges = [
-                KnowledgeEdge.model_validate(e) for e in data.get("edges", [])
-            ]
-            logger.info("Loaded knowledge graph: %d nodes, %d edges", len(self._nodes), len(self._edges))
+            self._edges = [KnowledgeEdge.model_validate(e) for e in data.get("edges", [])]
+            logger.info(
+                "Loaded knowledge graph: %d nodes, %d edges", len(self._nodes), len(self._edges)
+            )
         except Exception as exc:
             logger.warning("Failed loading graph: %s", exc)
             self._nodes = {}
@@ -60,7 +58,6 @@ class KnowledgeGraphEngine:
 
     def _save(self) -> None:
         """Persist graph to local JSON storage."""
-        import json
         from pathlib import Path
 
         path = Path(self._graph_path)
@@ -103,13 +100,9 @@ class KnowledgeGraphEngine:
     def add_edge(self, edge: KnowledgeEdge) -> KnowledgeEdge:
         """Add a directed edge between two nodes. Creates nodes if they don't exist."""
         if edge.source not in self._nodes:
-            self.add_node(
-                KnowledgeNode(id=edge.source, entity_type="concept", name=edge.source)
-            )
+            self.add_node(KnowledgeNode(id=edge.source, entity_type="concept", name=edge.source))
         if edge.target not in self._nodes:
-            self.add_node(
-                KnowledgeNode(id=edge.target, entity_type="concept", name=edge.target)
-            )
+            self.add_node(KnowledgeNode(id=edge.target, entity_type="concept", name=edge.target))
 
         self._edges.append(edge)
 
@@ -147,7 +140,6 @@ class KnowledgeGraphEngine:
         """
         nodes: list[KnowledgeNode] = []
         edges: list[KnowledgeEdge] = []
-        paths: list[list[str]] = []
 
         if node_id and node_id in self._nodes:
             # BFS around the node
@@ -171,7 +163,6 @@ class KnowledgeGraphEngine:
                                 edges.append(edge)
                 queue = next_queue
                 depth += 1
-            paths = [[node_id]]
         elif query or entity_type:
             for node in self._nodes.values():
                 match = False
@@ -204,7 +195,9 @@ class KnowledgeGraphEngine:
         entities: list[KnowledgeNode] = []
 
         # Detect project references
-        project_patterns = re.findall(r"(?:project|initiative|program)\s+[A-Z][a-zA-Z0-9_-]+", text, re.IGNORECASE)
+        project_patterns = re.findall(
+            r"(?:project|initiative|program)\s+[A-Z][a-zA-Z0-9_-]+", text, re.IGNORECASE
+        )
         for proj in project_patterns:
             node_id = f"project:{proj.lower().replace(' ', '_')}"
             if node_id not in self._nodes:
@@ -234,7 +227,9 @@ class KnowledgeGraphEngine:
                 )
 
         # Detect decision references
-        decision_patterns = re.findall(r"(?:decided|decision|approved|rejected)\s+['\"]?([^'\"]+?)['\"]?", text, re.IGNORECASE)
+        decision_patterns = re.findall(
+            r"(?:decided|decision|approved|rejected)\s+['\"]?([^'\"]+?)['\"]?", text, re.IGNORECASE
+        )
         for decision in decision_patterns:
             node_id = f"decision:{decision.lower().replace(' ', '_')[:40]}"
             if node_id not in self._nodes:
