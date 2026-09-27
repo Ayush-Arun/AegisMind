@@ -9,20 +9,20 @@ AegisMind implements a tiered consistency architecture designed to balance three
 
 To achieve these guarantees simultaneously without distributed lock contention, AegisMind segments consistency domains into three distinct models:
 - Read-Your-Writes consistency for document update transactions within the ingestion boundary.
-- Causal Consistency with zedtoken ordering for Zanzibar (SpiceDB) permission changes.
+- Causal Consistency with zedtoken ordering for sovereign access policy changes.
 - Eventual Consistency with atomic tombstoning for vector and lexical index synchronization.
 
 ---
 
 ## 2. Consistency Guarantees by Subsystem
 
-### 2.1 Causal Consistency for Permission Changes (SpiceDB / Zanzibar)
+### 2.1 Causal Consistency for Permission Changes (Sovereign Engine)
 
 The most critical security invariant of AegisMind is that permissions MUST be causally consistent. An unauthorized user must never observe search results from candidate chunks that their current identity is forbidden from accessing.
 
 ```
 +------------------+         (1) Write Tuples          +----------------------+
-| Ingestion Worker | --------------------------------> |   SpiceDB Cluster    |
+| Ingestion Worker | --------------------------------> |   Sovereign Engine    |
 +------------------+                                   +----------------------+
          |                                                        |
          | (2) Get ZedToken                                       | (3) Return ZedToken
@@ -33,10 +33,10 @@ The most critical security invariant of AegisMind is that permissions MUST be ca
 ```
 
 Key characteristics:
-1. **Pre-Indexing Permission Commitment**: Before newly ingested or updated document chunks are written to the vector store or made searchable, relationship tuples are committed to SpiceDB via `authz.write_tuples()`.
-2. **Revision Token Freshness**: SpiceDB returns a monotonically advancing `ZedToken` representing the snapshot of the permission transaction.
-3. **Pipeline Evaluation at Least as Fresh**: During Stage 5 of the retrieval pipeline, the bulk Zanzibar evaluation executes with `TokenConsistency(requirement="at_least_as_fresh", token=target_token)`. This eliminates read-after-write anomalies: queries initiated after a permission change observe that change immediately or wait for read replica convergence.
-4. **Instant Revocation Invalidation**: When permissions are revoked or deleted, the `SpiceDBWatcher` gRPC stream receives the tombstone event in sub-millisecond latency, invalidating local decision caches and enforcing zero-stale access windows.
+1. **Pre-Indexing Permission Commitment**: Before newly ingested or updated document chunks are written to the vector store or made searchable, relationship tuples are committed to the sovereign authorization engine via `authz.write_tuples()`.
+2. **Revision Token Freshness**: The sovereign engine returns a monotonically advancing `ZedToken` representing the snapshot of the permission transaction.
+3. **Pipeline Evaluation at Least as Fresh**: During Stage 5 of the retrieval pipeline, the bulk sovereign policy evaluation executes with `TokenConsistency(requirement="at_least_as_fresh", token=target_token)`. This eliminates read-after-write anomalies: queries initiated after a permission change observe that change immediately or wait for read replica convergence.
+4. **Instant Revocation Invalidation**: When permissions are revoked or deleted, the sovereign policy watcher receives the invalidation event in sub-millisecond latency, enforcing zero-stale access windows.
 
 ### 2.2 Read-Your-Writes Consistency for Ingestion Pipelines
 
@@ -47,7 +47,7 @@ Version N Ingestion Flow:
 [Parse Document] 
        |
        v
-[Update SpiceDB Tuples] (Causal barrier: permissions active first)
+[Update Sovereign Policies] (Causal barrier: permissions active first)
        |
        v
 [Compute SHA-256 Hashes per Chunk]
@@ -94,7 +94,7 @@ The following table details state transitions for document chunks across updates
 
 | State | `is_deleted` | `deleted_at` | Searchable? | Re-embedding required? |
 |---|---|---|---|---|
-| **New Chunk** | `FALSE` | `NULL` | Yes (after SpiceDB sync) | Yes (computed on ingest) |
+| **New Chunk** | `FALSE` | `NULL` | Yes (after sovereign sync) | Yes (computed on ingest) |
 | **Unchanged Chunk (v2)** | `FALSE` | `NULL` | Yes | No (reused via SHA-256 match) |
 | **Modified Chunk (v2)** | `FALSE` | `NULL` | Yes | Yes (new hash generated) |
 | **Superseded Chunk (v1)**| `TRUE` | `TIMESTAMPTZ` | No (filtered at query time) | N/A |

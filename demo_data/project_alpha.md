@@ -7,7 +7,7 @@ Project Alpha is the flagship initiative to build a sovereign AI platform for th
 ## Key Decisions
 
 - Alice decided to use local models for all inference to maintain data sovereignty
-- Bob approved the Zanzibar-based access control system for document-level permissions
+- Bob approved the sovereign access control system for document-level permissions
 - Charlie proposed the knowledge graph approach for connecting people, projects, and decisions
 
 ## Team

@@ -1,5 +1,5 @@
 ﻿{
-  "name": "AegisMind — DLQ Monitor & Auto-Retry",
+  "name": "AegisMind - DLQ Monitor & Auto-Retry",
   "nodes": [
     {
       "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 30 }] } },

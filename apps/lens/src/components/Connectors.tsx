@@ -123,7 +123,7 @@ export function Connectors() {
             Enterprise Connector Marketplace
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Configure enterprise repositories with automated Zanzibar ACL ingestion.
+            Configure enterprise repositories with automated sovereign access policy mapping.
           </p>
         </div>
 
@@ -212,7 +212,7 @@ export function Connectors() {
                 )}
                 <div className="flex items-center gap-1 text-[11px] text-emerald-400 mt-2">
                   <Shield className="h-3 w-3" />
-                  <span>Zanzibar Access Mapper Active</span>
+                  <span>Sovereign Access Policy Active</span>
                 </div>
               </CardContent>
 

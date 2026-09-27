@@ -1,6 +1,6 @@
 # AegisMind Engineering Guide
 
-AegisMind is an open-source, self-hostable, modular enterprise knowledge platform with document-level access control (Zanzibar and SpiceDB) enforced strictly at retrieval time.
+AegisMind is an open-source, self-hostable, modular enterprise knowledge platform with sovereign document-level access control enforced strictly at retrieval time.
 
 ## Architectural Foundation
 

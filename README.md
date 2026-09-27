@@ -1,17 +1,17 @@
-# AegisMind: Enterprise Knowledge Engine with Zanzibar ACL & n8n Automation
+# AegisMind: Sovereign Enterprise Knowledge Engine & Local AI Agent
 
-Modular enterprise knowledge platform and offline sovereign AI agent with document-level Zanzibar access control enforced at retrieval.
+Modular enterprise knowledge platform and offline sovereign AI agent with document-level sovereign access control enforced at retrieval.
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![Architecture](https://img.shields.io/badge/architecture-hexagonal%20%2F%20ports%20%26%20adapters-orange.svg)](#architecture)
-[![Authz](https://img.shields.io/badge/authz-Zanzibar%20%2F%20SpiceDB-green.svg)](#permission-and-security-model)
+[![Authz](https://img.shields.io/badge/authz-Sovereign%20Engine-green.svg)](#permission-and-security-model)
 [![Linter](https://img.shields.io/badge/linter-ruff-purple.svg)](https://github.com/astral-sh/ruff)
 [![Tests](https://img.shields.io/badge/tests-194%20passing-brightgreen.svg)](#testing-and-quality)
 [![Frontend](https://img.shields.io/badge/UI-React%2019%20%2F%20Vite-cyan.svg)](apps/lens)
 
 ---
 
-AegisMind is an open-source, modular enterprise knowledge and retrieval platform engineered around clean hexagonal architecture (Ports and Adapters). It guarantees mathematical document-level authorization using Google Zanzibar-style Relation-Based Access Control (ReBAC) powered by SpiceDB.
+AegisMind is an open-source, modular enterprise knowledge and retrieval platform engineered around clean hexagonal architecture (Ports and Adapters). It guarantees mathematical document-level authorization using sovereign relation-based access policies evaluated with zero stale reads.
 
 In addition to enterprise-scale multi-tenant retrieval, AegisMind includes a **Local Sovereign Agent Mode**: a 100% offline, air-gapped personal intelligence layer that runs locally alongside the enterprise stack. It utilizes local Ollama models, zero-network ONNX embeddings, a lightweight SQLite vector store, and strictly sandboxed system tools.
 
@@ -19,7 +19,7 @@ In addition to enterprise-scale multi-tenant retrieval, AegisMind includes a **L
 
 ## Key Features
 
-- **Knowledge Graph Engine**: Persistent local knowledge graph connecting people, projects, concepts, and decisions. Entity extraction, relationship linking, and graph-aware retrieval for the sovereign second brain. All data persists to local JSON files — zero cloud dependency.
+- **Knowledge Graph Engine**: Persistent local knowledge graph connecting people, projects, concepts, and decisions. Entity extraction, relationship linking, and graph-aware retrieval for the sovereign second brain. All data persists to local JSON files - zero cloud dependency.
 - **Approval Gate with Human-in-the-Loop**: Every agent action with write or execute risk level requires explicit human approval before execution. Proposals are registered, reviewed, and audited with full transparency. Controlled execution with complete auditability.
 - **Authz-Before-Rerank Pipeline**: Document permissions are evaluated *during* retrieval before cross-encoder reranking and token budgeting. Unauthorized chunks are purged upfront, preventing permission leakage, cache poisoning, and prompt injection attacks.
 - **7-Stage Hybrid Retrieval**:
@@ -27,7 +27,7 @@ In addition to enterprise-scale multi-tenant retrieval, AegisMind includes a **L
   2. Dense vector search and BM25/lexical sparse search
   3. Reciprocal Rank Fusion (RRF)
   4. Candidate Overfetching (3x to 5x requested top_k)
-  5. Bulk Zanzibar Authorization check with `at_least_as_fresh` consistency
+  5. Bulk Sovereign Authorization check with authoritative consistency
   6. Cross-encoder relevance reranking
   7. Token budgeting and synthesis
 - **Local Sovereign Agent Mode**: Completely air-gapped personal agentic workflow operating on local machines. Zero external API calls, zero cloud dependencies.
@@ -62,7 +62,7 @@ AegisMind strictly follows the Ports and Adapters (hexagonal) pattern. Domain lo
  | 2. Dense + Lexical Search              | - Knowledge Graph Context Enrichment      |
  | 3. Reciprocal Rank Fusion (RRF)        | - Approval Gate (Human-in-the-Loop)     |
  | 4. Overfetch (3x-5x top_k)             | - Sandboxed System Tools                  |
- | 5. Bulk Zanzibar Authz (SpiceDB)       | - Graph-Aware Reasoning                  |
+ | 5. Bulk Sovereign Authz                | - Graph-Aware Reasoning                  |
  | 6. Cross-Encoder Reranking             | - Structured Audit Logging               |
  | 7. Token Budgeting & Synthesis         |                                          |
  +-------------------+--------------------+---------------------+---------------------+
@@ -71,7 +71,7 @@ AegisMind strictly follows the Ports and Adapters (hexagonal) pattern. Domain lo
  +----------------------------------------+   +---------------------------------------+
  | Enterprise Adapters (Scale)            |   | Sovereign Adapters (Air-Gapped)     |
  | - Postgres + pgvector Storage          |   | - SQLite Vector Store               |
- | - SpiceDB Zanzibar ReBAC               |   | - Knowledge Graph (Local JSON)      |
+ | - Sovereign ReBAC Engine               |   | - Knowledge Graph (Local JSON)      |
  | - HuggingFace TEI Embedder & Reranker  |   | - Approval Gate (Pending Queue)     |
  +----------------------------------------+   | - Local Filesystem Connector         |
                                              +---------------------------------------+
@@ -93,7 +93,7 @@ aegisMind/
 ├── packages/
 │   ├── aegismind-core/          # FastAPI Agora server, orchestration, registry, sovereign agent
 │   ├── aegismind-types/         # Domain models, chunk structures, authorization envelopes
-│   ├── aegismind-authz/         # SpiceDB Zanzibar ReBAC adapter and in-memory authorization
+│   ├── aegismind-authz/         # Sovereign ReBAC adapter and in-memory authorization
 │   ├── aegismind-retrieval/     # Vector stores (pgvector, SQLite), embedders, rerankers, RRF
 │   ├── aegismind-ingestion/     # Text chunking, document parsers, versioning
 │   ├── aegismind-identity/      # Identity propagation and group alias expansion
@@ -147,10 +147,10 @@ This installs all dependencies, pulls models, and seeds the knowledge graph auto
 ```
 Or manually:
 ```powershell
-# Terminal 1 — Backend API
+# Terminal 1 - Backend API
 uv run uvicorn aegismind_core.app:app --reload --port 8000
 
-# Terminal 2 — Frontend
+# Terminal 2 - Frontend
 pnpm --filter lens dev
 ```
 
@@ -187,7 +187,7 @@ This mode operates completely on your machine without external cloud dependencie
 
 ### Option 2: Full Enterprise Stack (Docker Compose)
 
-To spin up the complete enterprise infrastructure (PostgreSQL with pgvector, SpiceDB, HuggingFace TEI Embedder, TEI Reranker, and Agora API):
+To spin up the complete enterprise infrastructure (PostgreSQL with pgvector, HuggingFace TEI Embedder, TEI Reranker, and Agora API):
 
 ```powershell
 docker compose up -d
@@ -205,9 +205,9 @@ docker compose ps
 AegisMind treats authorization correctness as non-negotiable:
 
 1. **Authz-Before-Rerank**:
-   Standard RAG architectures rerank documents before filtering, which leaks document existence and wastes cross-encoder compute. AegisMind overfetches candidates (3x to 5x), checks all candidate chunk IDs in a single bulk call to SpiceDB, purges unauthorized items, and only passes authorized chunks to the reranker and synthesis stages.
+   Standard RAG architectures rerank documents before filtering, which leaks document existence and wastes cross-encoder compute. AegisMind overfetches candidates (3x to 5x), checks all candidate chunk IDs in a single bulk call to the sovereign authorization engine, purges unauthorized items, and only passes authorized chunks to the reranker and synthesis stages.
 
-2. **Zanzibar ReBAC Consistency**:
+2. **Sovereign ReBAC Consistency**:
    All authorization checks execute with `at_least_as_fresh` consistency tokens, preventing stale permission evaluations after access revocation.
 
 3. **Sovereign Agent Sandboxing**:
@@ -247,7 +247,7 @@ pnpm --filter lens build
 ## Why This Wins: Hackathon Highlights
 
 ### 🧠 Sovereign Second Brain
-Every piece of knowledge — decisions, people, projects, concepts — is connected through a persistent, local knowledge graph. No data ever leaves the machine.
+Every piece of knowledge - decisions, people, projects, concepts - is connected through a persistent, local knowledge graph. No data ever leaves the machine.
 
 ### 🔒 Human-in-the-Loop Approval Gate
 Every agent action with write or execute risk level requires explicit human approval before execution. Full audit trail. Zero unchecked autonomy.
@@ -258,7 +258,7 @@ The frontend renders the entire knowledge graph as an interactive SVG visualizat
 ### 🏗️ Hexagonal Architecture at Scale
 Domain logic is isolated from infrastructure. Every adapter (storage, authz, embedders, LLMs) is pluggable via Python entry points and dynamic registry resolution.
 
-### 🔐 Enterprise-Grade Authz with Zanzibar ReBAC
+### 🔐 Enterprise-Grade Sovereign Authz
 Document-level authorization is enforced during retrieval *before* reranking. `at_least_as_fresh` consistency prevents permission leakage after access revocation.
 
 ### 🌐 Fully Offline Capable

@@ -161,7 +161,7 @@ export function Search({ currentTenantId, currentUserId }: SearchProps) {
             <span>{filteredResults.length} access-verified results</span>
             <span className="flex items-center gap-1 text-emerald-400">
               <ShieldCheck className="h-3.5 w-3.5" />
-              SpiceDB Token Freshness Verified
+              Sovereign Access Policy Verified
             </span>
           </div>
 
@@ -172,7 +172,7 @@ export function Search({ currentTenantId, currentUserId }: SearchProps) {
                 No matching authorized documents found
               </p>
               <p className="text-xs max-w-sm mt-1">
-                Either no documents match this query, or your current identity ({currentUserId}) does not hold Zanzibar viewer privileges.
+                Either no documents match this query, or your current identity ({currentUserId}) does not hold sovereign viewer access.
               </p>
             </div>
           ) : (
@@ -300,10 +300,10 @@ function getInitialResults(): SearchResult[] {
     {
       chunk_id: "chk-sec-1",
       document_id: "doc-confluence-101",
-      title: "Zanzibar Relationship Schema and Ingestion Spec",
-      uri: "https://wiki.corp.net/pages/zanzibar-spec",
+      title: "Sovereign Architecture and Ingestion Spec",
+      uri: "https://wiki.corp.net/pages/sovereign-spec",
       snippet:
-        "The Sacred Enforcement Pipeline overfetches candidates by 5x, checks Zanzibar relationship tuples using bulk_check with at_least_as_fresh consistency, and drops unauthorized documents before reranking.",
+        "The Sovereign Enforcement Pipeline overfetches candidates by 5x, checks sovereign access policies, and drops unauthorized documents before reranking.",
       score: 0.96,
       metadata: { source: "confluence", mime_type: "text/markdown" },
     },

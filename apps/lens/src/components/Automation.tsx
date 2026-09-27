@@ -108,7 +108,7 @@ const WORKFLOWS: WorkflowDef[] = [
     triggerLabel: "Slack Events API",
     webhookPath: "/webhook/aegismind/slack/events",
     description:
-      "Wire this webhook to your Slack App's Event Subscriptions. When anyone @mentions the bot, it calls /api/v1/search with that user's Slack ID (so Zanzibar ACLs apply!), and replies in the same thread with the top-3 results and citations.",
+      "Wire this webhook to your Slack App's Event Subscriptions. When anyone @mentions the bot, it calls /api/v1/search with that user's Slack ID (so sovereign ACLs apply!), and replies in the same thread with the top-3 results and citations.",
     steps: [
       "Slack sends app_mention event",
       "Parse message, strip @mention",
@@ -146,7 +146,7 @@ const WORKFLOWS: WorkflowDef[] = [
     triggerLabel: "Weekdays 8:00 AM",
     schedule: "0 8 * * 1-5",
     description:
-      "Posts a morning briefing to your Slack digest channel: 24-hour activity breakdown (searches, ingestions, connector syncs), top 5 most active users by principal ID, and a full system readiness report (vector store, SpiceDB, embedder, reranker, LLM).",
+      "Posts a morning briefing to your Slack digest channel: 24-hour activity breakdown (searches, ingestions, connector syncs), top 5 most active users by principal ID, and a full system readiness report (vector store, sovereign authz engine, embedder, reranker, LLM).",
     steps: [
       "GET /api/v1/audit → compute 24h stats",
       "GET /api/v1/readiness → system health",
@@ -160,12 +160,12 @@ const WORKFLOWS: WorkflowDef[] = [
     id: "06",
     icon: <KeyRound className="h-5 w-5" />,
     title: "ACL Provisioning from HR",
-    subtitle: "Auto-grant Zanzibar permissions on hire/fire",
+    subtitle: "Auto-grant sovereign permissions on hire/fire",
     trigger: "webhook",
     triggerLabel: "POST /webhook/aegismind/acl/provision",
     webhookPath: "/webhook/aegismind/acl/provision",
     description:
-      "Connect your HR system (BambooHR, Workday, Rippling, etc.) to this webhook. On employee.onboarded it maps their department and role to the correct Zanzibar relationship tuples and grants them instantly. On employee.offboarded it revokes all permissions in one shot.",
+      "Connect your HR system (BambooHR, Workday, Rippling, etc.) to this webhook. On employee.onboarded it maps their department and role to the correct sovereign relationship policies and grants them instantly. On employee.offboarded it revokes all permissions in one shot.",
     steps: [
       "HR fires employee.onboarded / employee.offboarded",
       "Map dept + role → folder access rules",
@@ -183,17 +183,17 @@ const CONCEPTS = [
   {
     icon: <Workflow className="h-5 w-5 text-primary" />,
     title: "What is n8n?",
-    body: "n8n is an open-source workflow automation platform — think Zapier but self-hosted, code-friendly, and with no per-task pricing. You build visual workflows that connect APIs, databases, and services together without writing boilerplate glue code.",
+    body: "n8n is an open-source workflow automation platform: think Zapier but self-hosted, code-friendly, and with no per-task pricing. You build visual workflows that connect APIs, databases, and services together without writing boilerplate glue code.",
   },
   {
     icon: <Brain className="h-5 w-5 text-violet-400" />,
     title: "Why does AegisMind use it?",
-    body: "AegisMind exposes a powerful REST API but has no built-in scheduler or event router. n8n fills that gap: it watches for events (Slack messages, cron timers, HR webhooks), transforms payloads, calls the AegisMind API, and routes the results — all without any extra backend code.",
+    body: "AegisMind exposes a powerful REST API but has no built-in scheduler or event router. n8n fills that gap: it watches for events (Slack messages, cron timers, HR webhooks), transforms payloads, calls the AegisMind API, and routes the results, all without any extra backend code.",
   },
   {
     icon: <Zap className="h-5 w-5 text-amber-400" />,
     title: "How are they connected?",
-    body: "n8n runs as a Docker container on the same internal network as Agora (the AegisMind API server). Its workflows call http://agora:8000 directly — this means zero public internet exposure for API calls, and Zanzibar ACLs still enforce on every search request.",
+    body: "n8n runs as a Docker container on the same internal network as Agora (the AegisMind API server). Its workflows call http://agora:8000 directly: this means zero public internet exposure for API calls, and sovereign access policies still enforce on every search request.",
   },
   {
     icon: <Settings2 className="h-5 w-5 text-emerald-400" />,
@@ -420,7 +420,7 @@ export function Automation() {
       ? "Checking n8n…"
       : n8nOnline
       ? "n8n online"
-      : "n8n offline — start with docker compose up";
+      : "n8n offline: start with docker compose up";
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
@@ -476,7 +476,7 @@ export function Automation() {
             <div className="flex items-center gap-2">
               <Workflow className="h-3.5 w-3.5 text-violet-400" />
               <span className="font-medium text-foreground">n8n Workflow Editor</span>
-              <span className="text-border/60">—</span>
+              <span className="text-border/60">-</span>
               <span className="font-mono text-[11px]">{N8N_BASE}</span>
             </div>
             <button
@@ -533,7 +533,7 @@ export function Automation() {
             null,
             { label: "Agora :8000", icon: <Brain className="h-3.5 w-3.5 text-primary" /> },
             null,
-            { label: "SpiceDB + pgvector", icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> },
+            { label: "Sovereign Store + pgvector", icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> },
           ].map((item, i) =>
             item === null ? (
               <ArrowRight key={i} className="h-4 w-4 text-muted-foreground/50 shrink-0" />
@@ -552,7 +552,7 @@ export function Automation() {
             )
           )}
           <span className="text-muted-foreground text-[11px] ml-auto">
-            All calls are internal Docker network — no public exposure
+            All calls are internal Docker network (no public exposure)
           </span>
         </div>
       </section>
@@ -582,10 +582,10 @@ export function Automation() {
         </h2>
         <ol className="space-y-2">
           {[
-            "Start the stack: docker compose up -d — this starts n8n on port 5678 alongside Agora",
-            `Open n8n: ${N8N_BASE} — login with admin / (your N8N_BASIC_AUTH_PASSWORD from .env)`,
+            "Start the stack: docker compose up -d (this starts n8n on port 5678 alongside Agora)",
+            `Open n8n: ${N8N_BASE} - login with admin / (your N8N_BASIC_AUTH_PASSWORD from .env)`,
             "Go to Settings → Credentials → add your Slack API OAuth token",
-            "Workflows are auto-imported from ./n8n/workflows/ — just activate each one",
+            "Workflows are auto-imported from ./n8n/workflows/ - just activate each one",
             "For Slack bot: point your Slack App Event Subscriptions URL to the n8n webhook path shown above",
             "For HR provisioning: configure your HR system (BambooHR, Rippling, Workday) to POST to the ACL webhook",
           ].map((step, i) => (

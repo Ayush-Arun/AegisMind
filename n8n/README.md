@@ -1,8 +1,8 @@
 ﻿# AegisMind + n8n Automation
 
 n8n is an open-source workflow automation platform. This integration gives AegisMind a
-full orchestration layer — scheduled syncs, Slack bots, ACL provisioning, DLQ monitoring,
-and daily digests — all wired to the Agora REST API without writing any additional code.
+full orchestration layer - scheduled syncs, Slack bots, ACL provisioning, DLQ monitoring,
+and daily digests - all wired to the Agora REST API without writing any additional code.
 
 ## Stack
 
@@ -45,8 +45,8 @@ curl -X POST http://localhost:5678/webhook/aegismind/ingest \
     "allowed_users": ["alice", "bob", "charlie"]
   }'
 
-# GitHub webhook — point your repo webhook here, it auto-normalizes commits
-# Slack file_shared event — forward from Slack Events API
+# GitHub webhook - point your repo webhook here, it auto-normalizes commits
+# Slack file_shared event - forward from Slack Events API
 ```
 
 **Flow:** Webhook -> Normalize Payload -> `POST /api/v1/documents` -> Slack notification
@@ -71,7 +71,7 @@ with top-3 results whenever it is @mentioned or DMed.
 
 **Setup:**
 1. Create a Slack App at https://api.slack.com/apps
-2. Enable Event Subscriptions — URL: `http://<your-host>:5678/webhook/aegismind/slack/events`
+2. Enable Event Subscriptions - URL: `http://<your-host>:5678/webhook/aegismind/slack/events`
 3. Subscribe to `app_mention` and `message.im` events
 4. Add `chat:write`, `channels:history`, `im:history` OAuth scopes
 5. Add Slack credentials in n8n (Settings -> Credentials -> Slack API)
@@ -106,8 +106,8 @@ Posts a morning briefing to `#aegismind-digest` including:
 ### 6. ACL Provisioning from HR System (`06_acl_provisioning.json`)
 **Trigger:** `POST http://localhost:5678/webhook/aegismind/acl/provision`
 
-Listens for HR system webhooks and automatically provisions Zanzibar
-relationship tuples based on employee department/role:
+Listens for HR system webhooks and automatically provisions sovereign
+access policies based on employee department/role:
 
 ```json
 // Employee onboarded
@@ -119,7 +119,7 @@ relationship tuples based on employee department/role:
   "tenant_id": "corp-default"
 }
 
-// Employee offboarded — auto-revokes all permissions
+// Employee offboarded - auto-revokes all permissions
 {
   "event_type": "employee.offboarded",
   "employee_id": "dave"
@@ -171,15 +171,15 @@ External Systems
                    └──────┬──────┘
           ┌───────────────┼───────────────┐
           ▼               ▼               ▼
-    PostgreSQL +      SpiceDB          TEI Embedder
-    pgvector          (Zanzibar)       + Reranker
+    PostgreSQL +      Sovereign        TEI Embedder
+    pgvector          Engine           + Reranker
 ```
 
 ## Security Notes
 
 - n8n stores Slack OAuth tokens and API keys encrypted using `N8N_ENCRYPTION_KEY`
 - Change all default passwords before deploying to any non-local environment
-- The `AEGISMIND_BASE_URL` inside n8n is `http://agora:8000` (internal Docker network) —
+- The `AEGISMIND_BASE_URL` inside n8n is `http://agora:8000` (internal Docker network):
   this means n8n never exposes API calls to the public internet
 - Webhook endpoints are publicly reachable; add n8n basic auth or reverse proxy
   authentication in front of `localhost:5678` in production

@@ -196,7 +196,7 @@ export async function listConnectors(): Promise<ConnectorInfo[]> {
       return {
         name,
         title: item.title || spec.title || spec.display_name || formattedTitle,
-        description: item.description || spec.description || "Enterprise repository connector with automated Zanzibar ACL ingestion.",
+        description: item.description || spec.description || "Enterprise repository connector with automated sovereign access policy mapping.",
         version: item.version || spec.version || "0.1.0",
         status: item.status || "connected",
         lastSync: item.lastSync || item.last_sync || "Just now",
@@ -508,7 +508,7 @@ function simulateChatStream(params: {
   const q = params.query.toLowerCase();
   params.onThinking("Querying vector store with coarse tenant filter...");
   setTimeout(() => {
-    params.onThinking("Evaluating Zanzibar relationship tuples via SpiceDB bulk_check...");
+    params.onThinking("Evaluating sovereign access policies via local policy bulk check...");
     setTimeout(() => {
       params.onThinking("Applying cross-encoder reranker and synthesizing response...");
 
@@ -522,23 +522,23 @@ function simulateChatStream(params: {
             document_id: "doc-sec-02",
             title: "SEC-892: Zero Stale Read Revocation Policy",
             uri: "https://jira.corp.internal/browse/SEC-892",
-            snippet: "Revocation of viewer access invalidates authorization cache immediately without stale window using at_least_as_fresh consistency tokens.",
+            snippet: "Revocation of viewer access invalidates authorization cache immediately without stale window using sovereign policy verification.",
             score: 0.96,
           },
         ];
-        responseText = `Under SEC-892, AegisMind guarantees a zero stale read window for permission revocations. When a viewer relationship tuple is deleted or revoked in Zanzibar (SpiceDB), all subsequent read and search queries immediately enforce the updated authorization state. Consistency requirements use at_least_as_fresh with revision tokens, preventing any caching layer from returning stale unauthorized documents.`;
-      } else if (q.includes("zanzibar") || q.includes("spicedb") || q.includes("permission") || q.includes("access")) {
+        responseText = `Under SEC-892, AegisMind guarantees a zero stale read window for permission revocations. When a viewer relationship or access policy is revoked sovereignly, all subsequent read and search queries immediately enforce the updated authorization state. Consistency requirements use local authoritative policy tokens, preventing any caching layer from returning stale unauthorized documents.`;
+      } else if (q.includes("sovereign") || q.includes("policy") || q.includes("permission") || q.includes("access")) {
         mockCitations = [
           {
             chunk_id: "chk-arch-01",
             document_id: "doc-arch-01",
             title: "AegisMind System Architecture and Zero-Leakage Guarantee",
             uri: "https://wiki.corp.internal/architecture/zero-leakage",
-            snippet: "All retrieval queries pass through Zanzibar-compatible authorization checks before candidate chunks reach the reranker or answer synthesis stages.",
+            snippet: "All retrieval queries pass through Sovereign Access Policy authorization checks before candidate chunks reach the reranker or answer synthesis stages.",
             score: 0.95,
           },
         ];
-        responseText = `AegisMind utilizes Google Zanzibar-compatible relationship-based access control (SpiceDB) to enforce fine-grained permissions. Candidate chunks undergo bulk authorization checks with at_least_as_fresh consistency before reaching rerankers or generative models, ensuring that users can only receive answers synthesized from documents they are explicitly authorized to view.`;
+        responseText = `AegisMind utilizes 100% sovereign relationship-based access control to enforce fine-grained permissions entirely locally. Candidate chunks undergo bulk authorization checks with authoritative local consistency before reaching rerankers or generative models, ensuring that users can only receive answers synthesized from documents they are explicitly authorized to view.`;
       } else if (q.includes("pipeline") || q.includes("sacred") || q.includes("stages") || q.includes("retrieval")) {
         mockCitations = [
           {
@@ -546,11 +546,11 @@ function simulateChatStream(params: {
             document_id: "doc-pipe-03",
             title: "The 7-Stage Sacred Enforcement Pipeline",
             uri: "https://wiki.corp.internal/retrieval/sacred-pipeline",
-            snippet: "The 7-stage retrieval lifecycle coordinates query embedding, coarse filtering, overfetching, Zanzibar bulk checks, drop denied, rerank, and citations.",
+            snippet: "The 7-stage retrieval lifecycle coordinates query embedding, coarse filtering, overfetching, sovereign policy checks, drop denied, rerank, and citations.",
             score: 0.94,
           },
         ];
-        responseText = `AegisMind's Sacred Enforcement Pipeline coordinates the 7-stage retrieval lifecycle: Stage 1: Embed query into dense and sparse representations. Stage 2: Coarse pre-filter by tenant and group boundary. Stage 3: Overfetch candidates by a factor of 3.0 to 5.0. Stage 4: Bulk authorization checks against Zanzibar with at_least_as_fresh consistency. Stage 5: Drop denied candidates strictly. Stage 6: Rerank surviving candidates with cross-encoders. Stage 7: Attach verifiable deep-linked citations.`;
+        responseText = `AegisMind's Sacred Enforcement Pipeline coordinates the 7-stage retrieval lifecycle: Stage 1: Embed query into dense and sparse representations. Stage 2: Coarse pre-filter by tenant and group boundary. Stage 3: Overfetch candidates by a factor of 3.0 to 5.0. Stage 4: Bulk authorization checks against Sovereign Access Policies with authoritative consistency. Stage 5: Drop denied candidates strictly. Stage 6: Rerank surviving candidates with cross-encoders. Stage 7: Attach verifiable deep-linked citations.`;
       } else if (q.includes("encrypt") || q.includes("kms") || q.includes("key") || q.includes("dek") || q.includes("aes")) {
         mockCitations = [
           {
@@ -574,7 +574,7 @@ function simulateChatStream(params: {
             score: 0.91,
           },
         ];
-        responseText = `AegisMind connects to 15 enterprise sources including Confluence, Jira, Google Drive, Slack, GitHub, Notion, Dropbox, Gmail, Linear, Salesforce, SharePoint, Teams, Zendesk, Asana, and PagerDuty. Each connector extracts resources, maps fine-grained source permissions into Zanzibar viewer, editor, and owner tuples, and supports cursor-based incremental sync managed by the Scribe background worker.`;
+        responseText = `AegisMind connects to 15 enterprise sources including Confluence, Jira, Google Drive, Slack, GitHub, Notion, Dropbox, Gmail, Linear, Salesforce, SharePoint, Teams, Zendesk, Asana, and PagerDuty. Each connector extracts resources, maps fine-grained source permissions into sovereign viewer, editor, and owner policies, and supports cursor-based incremental sync managed by the Scribe background worker.`;
       } else {
         mockCitations = [
           {
@@ -586,7 +586,7 @@ function simulateChatStream(params: {
             score: 0.89,
           },
         ];
-        responseText = `Based on verified access-controlled documents for ${params.user_id || "current user"}, AegisMind retrieved and authorized information relevant to "${params.query}". All retrieved chunks passed Zanzibar viewer authorization checks prior to synthesis, ensuring strict zero data leakage.`;
+        responseText = `Based on verified access-controlled documents for ${params.user_id || "current user"}, AegisMind retrieved and authorized information relevant to "${params.query}". All retrieved chunks passed sovereign viewer authorization checks prior to synthesis, ensuring strict zero data leakage.`;
       }
 
       params.onCitations(mockCitations);
@@ -611,7 +611,7 @@ function getFallbackConnectors(): ConnectorInfo[] {
     {
       name: "confluence",
       title: "Confluence",
-      description: "Sync spaces, pages, blog posts, and space/page restrictions with Zanzibar tuples.",
+      description: "Sync spaces, pages, blog posts, and space/page restrictions with sovereign access policies.",
       version: "0.1.0",
       status: "connected",
       lastSync: "10 minutes ago",

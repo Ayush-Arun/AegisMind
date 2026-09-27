@@ -9,7 +9,7 @@ metadata:
 data:
   AEGISMIND_ENV: "production"
   TENANT_DEFAULT: "corp-default"
-  SPICEDB_ENDPOINT: "spicedb.aegismind.svc.cluster.local:50051"
+  SOVEREIGN_MODE: "true"
   TEI_EMBEDDER_URL: "http://tei-embedder.aegismind.svc.cluster.local:80"
   TEI_RERANKER_URL: "http://tei-reranker.aegismind.svc.cluster.local:80"
   DOCLING_URL: "http://docling.aegismind.svc.cluster.local:5001"

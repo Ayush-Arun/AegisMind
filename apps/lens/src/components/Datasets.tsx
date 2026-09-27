@@ -303,7 +303,7 @@ export function Datasets({
 
       setFeedback({
         type: "success",
-        message: `Successfully indexed "${res.title}" with ${res.chunk_count || 1} vector chunks. Zanzibar permissions granted to: ${res.allowed_users.join(", ")}.`,
+        message: `Successfully indexed "${res.title}" with ${res.chunk_count || 1} vector chunks. Sovereign access granted to: ${res.allowed_users.join(", ")}.`,
       });
 
       setTitle("");
@@ -323,7 +323,7 @@ export function Datasets({
     }
   };
 
-  // Delete Dataset with Zanzibar Revocation
+  // Delete Dataset with Access Revocation
   const handleDelete = async (docId: string, docTitle: string) => {
     if (!confirm(`Are you sure you want to delete and revoke "${docTitle}"?`)) {
       return;
@@ -334,7 +334,7 @@ export function Datasets({
       await deleteDocument(docId);
       setFeedback({
         type: "success",
-        message: `Dataset "${docTitle}" deleted and Zanzibar access tuples revoked.`,
+        message: `Dataset "${docTitle}" deleted and sovereign access revoked.`,
       });
 
       setResources((prev) => prev.filter((r) => r.id !== docId));
@@ -531,7 +531,7 @@ export function Datasets({
               size="sm"
               onClick={() => setShowManualForm((prev) => !prev)}
               className="h-8 text-xs gap-1.5"
-              title="Toggle manual text paste and Zanzibar ACL configuration"
+              title="Toggle manual text paste and sovereign access configuration"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>{showManualForm ? "Hide Form" : "Custom Text Ingest"}</span>
@@ -602,10 +602,10 @@ export function Datasets({
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Database className="h-4 w-4 text-primary" />
-              Manual Text & Zanzibar ACL Ingestion
+              Manual Text & Sovereign Access Policy Ingestion
             </CardTitle>
             <CardDescription className="text-xs">
-              Directly paste structured text, records, or specifications. AegisMind segments, generates embeddings, and configures Zanzibar relation tuples.
+              Directly paste structured text, records, or specifications. AegisMind segments, generates embeddings, and configures sovereign access policies.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -672,11 +672,11 @@ export function Datasets({
                 />
               </div>
 
-              {/* Zanzibar ACL */}
+              {/* Sovereign Access Policy */}
               <div className="space-y-2 border-t border-border/60 pt-3">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
                   <Lock className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>Zanzibar Access Authorization Tuples</span>
+                  <span>Sovereign Access Authorization Policy</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {availablePrincipals.map((p) => {
@@ -876,7 +876,7 @@ export function Datasets({
                                 disabled={isDeleting === res.id}
                                 onClick={() => handleDelete(res.id, res.title)}
                                 className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                title="Delete dataset and revoke Zanzibar authorization"
+                                title="Delete dataset and revoke sovereign authorization"
                               >
                                 {isDeleting === res.id ? (
                                   <RefreshCw className="h-3 w-3 animate-spin" />
@@ -922,7 +922,7 @@ export function Datasets({
                       )}
                     </div>
                     <CardDescription className="text-[11px]">
-                      Dedicated chatbox grounded specifically on this dataset with verified SpiceDB access control.
+                      Dedicated chatbox grounded specifically on this dataset with verified sovereign access control.
                     </CardDescription>
                   </div>
 
@@ -1164,10 +1164,10 @@ export function Datasets({
                 <button
                   type="button"
                   disabled={isChatting}
-                  onClick={() => handleDatasetQuery("Verify Zanzibar authorization and access security for this dataset.")}
+                  onClick={() => handleDatasetQuery("Verify sovereign authorization and access security for this dataset.")}
                   className="px-2 py-1 rounded bg-secondary/80 hover:bg-secondary border border-border/60 text-foreground shrink-0 transition-colors"
                 >
-                  Zanzibar access check
+                  Sovereign access check
                 </button>
               </div>
 

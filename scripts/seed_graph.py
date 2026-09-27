@@ -67,10 +67,10 @@ async def seed_graph() -> None:
             source_query="Architecture principles",
         ),
         KnowledgeNode(
-            id="concept:zanzibar_acl",
+            id="concept:sovereign_access_policy",
             entity_type="concept",
-            name="Zanzibar ACL",
-            properties={"system": "SpiceDB"},
+            name="Sovereign Access Policy",
+            properties={"system": "SovereignEngine"},
             source_query="Architecture principles",
         ),
         KnowledgeNode(
@@ -116,7 +116,7 @@ async def seed_graph() -> None:
             confidence=0.95,
         ),
         KnowledgeEdge(
-            source="concept:zanzibar_acl",
+            source="concept:sovereign_access_policy",
             target="project:alpha",
             relation="implements",
             confidence=1.0,

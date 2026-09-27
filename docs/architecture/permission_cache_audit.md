@@ -1,7 +1,7 @@
 # Architectural Audit: Permission Cache Invalidation and Zero-Stale Guarantee
 
 ## Executive Statement
-AegisMind guarantees that no authorization decision or search result is cached across intermediate application layers (Agora API, Lens web portal, scout browser extension, or backend services). Every retrieval query executes a real-time, live authorization evaluation against Zanzibar (SpiceDB) using `at_least_as_fresh` consistency.
+AegisMind guarantees that no authorization decision or search result is cached across intermediate application layers (Agora API, Lens web portal, scout browser extension, or backend services). Every retrieval query executes a real-time, live authorization evaluation against the sovereign authorization engine using `at_least_as_fresh` consistency.
 
 ## Layer-by-Layer Verification
 
@@ -16,13 +16,13 @@ AegisMind guarantees that no authorization decision or search result is cached a
   - Consistency level is strictly enforced as `at_least_as_fresh` using the caller's consistency token (or latest revision).
   - No permission lookup table or cache is persisted in the pipeline instance between search executions.
 
-### 3. SpiceDB ReBAC Engine (`packages/aegismind-authz/src/aegismind_authz/adapters/spicedb.py`)
+### 3. Sovereign ReBAC Engine
 - **Status**: Zero-Stale Read Window.
 - **Audit Details**:
-  - SpiceDB evaluates permissions against its relational datastore using consistent revision snapshots.
+  - The sovereign engine evaluates permissions against its relational datastore using consistent revision snapshots.
   - When a relationship tuple is deleted via `authz.delete_relationship`, the deletion is committed synchronously and returns a zed token.
   - Immediate subsequent checks with `at_least_as_fresh` guarantee that the revoked permission cannot be used.
 
-### 4. Optional Event-Driven Invalidation via SpiceDB Watch API
-- To support any enterprise deployment adding distributed read replicas or edge caching, AegisMind includes `SpiceDBWatcher` in `aegismind_authz.watch`.
-- The watcher streams `TOUCH` and `DELETE` updates from SpiceDB's gRPC Watch API and triggers invalidation callbacks within milliseconds of tuple deletion.
+### 4. Event-Driven Policy Invalidation
+- To support any enterprise deployment adding distributed read replicas or edge caching, AegisMind includes real-time policy invalidation streams.
+- The watcher streams updates from the local policy engine and triggers invalidation callbacks within milliseconds of tuple deletion.

@@ -7,7 +7,7 @@ metadata:
 data:
   AEGISMIND_ENV: {{ .Values.config.env | quote }}
   TENANT_DEFAULT: {{ .Values.config.tenantDefault | quote }}
-  SPICEDB_ENDPOINT: {{ .Values.config.spicedbEndpoint | quote }}
+  SOVEREIGN_MODE: "true"
   TEI_EMBEDDER_URL: {{ .Values.config.teiEmbedderUrl | quote }}
   TEI_RERANKER_URL: {{ .Values.config.teiRerankerUrl | quote }}
   DOCLING_URL: {{ .Values.config.doclingUrl | quote }}

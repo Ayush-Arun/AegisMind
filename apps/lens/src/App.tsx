@@ -317,7 +317,7 @@ export function App() {
             <span className="flex h-2 w-2 rounded-full bg-emerald-400" />
             <span>AegisMind Core v0.1.0</span>
             <span>•</span>
-            <span>SpiceDB Zanzibar Engine Connected</span>
+            <span>Sovereign Local Engine Active</span>
             <span>•</span>
             <span>Reciprocal Rank Fusion Active</span>
           </div>

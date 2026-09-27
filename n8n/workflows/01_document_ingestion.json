@@ -1,5 +1,5 @@
 ﻿{
-  "name": "AegisMind — Document Ingestion Pipeline",
+  "name": "AegisMind - Document Ingestion Pipeline",
   "nodes": [
     {
       "parameters": { "httpMethod": "POST", "path": "aegismind/ingest", "responseMode": "responseNode", "options": {} },

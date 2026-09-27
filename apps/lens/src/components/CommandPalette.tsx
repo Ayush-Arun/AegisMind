@@ -100,7 +100,7 @@ export function CommandPalette({
                 className="flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent hover:text-accent-foreground aria-selected:bg-accent aria-selected:text-accent-foreground"
               >
                 <Network className="h-4 w-4 text-primary" />
-                <span>Zanzibar Access Graph</span>
+                <span>Sovereign Access Graph</span>
               </Command.Item>
             </Command.Group>
 

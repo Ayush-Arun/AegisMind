@@ -63,7 +63,7 @@ export function App() {
           setPageData({
             title,
             url,
-            content: `Visible content preview from ${title} (${url}). Clean DOM text extract ready for Zanzibar access controlled ingestion.`,
+            content: `Visible content preview from ${title} (${url}). Clean DOM text extract ready for sovereign access-controlled ingestion.`,
           });
           return;
         }
@@ -86,7 +86,7 @@ export function App() {
     setCaptureStatus("Extracting visible text and sanitizing DOM...");
 
     setTimeout(async () => {
-      setCaptureStatus("Writing Zanzibar relationship tuples to SpiceDB...");
+      setCaptureStatus("Writing sovereign access policies to local engine...");
       setTimeout(() => {
         setIsCapturing(false);
         const generatedId = `doc-scout-${Date.now().toString(36)}`;
@@ -148,7 +148,7 @@ export function App() {
 
         <div>
           <label style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
-            Access Visibility (Zanzibar Relation)
+            Access Visibility (Sovereign Policy)
           </label>
           <select
             value={visibility}
