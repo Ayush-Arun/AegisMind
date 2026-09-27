@@ -1,7 +1,7 @@
-# AegisMind Start Script — Start all services
+# AegisMind Start Script - Start all services
 
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  AEGISMIND SOVEREIGN SECOND BRAIN — STARTING" -ForegroundColor Cyan
+Write-Host "  AEGISMIND SOVEREIGN SECOND BRAIN: STARTING" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 

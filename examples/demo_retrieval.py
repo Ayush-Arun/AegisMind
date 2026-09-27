@@ -5,13 +5,6 @@ import logging
 import sys
 
 from aegismind_core.domain.models import Chunk, RetrievalQuery
-from aegismind_core.domain.permissions import (
-    ConsistencyRequirement,
-    ConsistencyToken,
-    Resource,
-    Subject,
-)
-from aegismind_core.ports.authz import AuthzPort
 from aegismind_core.ports.vector_store import VectorStorePort
 from aegismind_core.services.retrieval import RetrievalService
 
@@ -27,7 +20,6 @@ async def main() -> None:
     logger.info("Initializing AegisMind RetrievalService via dynamic registry...")
     service = RetrievalService()
 
-    authz: AuthzPort = service._authz
     vector_store: VectorStorePort = service._vector_store
 
     logger.info("Seeding knowledge corpus and document chunks...")
@@ -51,24 +43,7 @@ async def main() -> None:
     ]
     await vector_store.upsert(chunks)
 
-    logger.info("Configuring Zanzibar access control relationships...")
-    # Alice is an Engineer
-    alice = Subject(type="user", id="alice")
-    await authz.write_relationship(alice, "reader", Resource(type="document", id="doc_eng_1"))
-    await authz.write_relationship(alice, "reader", Resource(type="document", id="doc_eng_2"))
-
-    # Bob is in HR
-    bob = Subject(type="user", id="bob")
-    await authz.write_relationship(bob, "reader", Resource(type="document", id="doc_hr_1"))
-    await authz.write_relationship(bob, "reader", Resource(type="document", id="doc_hr_2"))
-
-    # Public document has wildcard access
-    wildcard_user = Subject(type="user", id="*")
-    await authz.write_relationship(
-        wildcard_user, "reader", Resource(type="document", id="doc_pub_1")
-    )
-
-    logger.info("Simulating multi-tenant permission-aware retrieval...")
+    logger.info("Simulating sovereign semantic retrieval and reranking...")
 
     # Alice queries
     q_alice = RetrievalQuery(
@@ -76,7 +51,6 @@ async def main() -> None:
         user_id="alice",
         top_k=5,
         overfetch_factor=3.0,
-        consistency=ConsistencyToken(requirement=ConsistencyRequirement.AT_LEAST_AS_FRESH),
     )
     res_alice = await service.search(q_alice)
     logger.info("Results for Alice (Engineer):")
@@ -99,7 +73,6 @@ async def main() -> None:
         user_id="bob",
         top_k=5,
         overfetch_factor=3.0,
-        consistency=ConsistencyToken(requirement=ConsistencyRequirement.AT_LEAST_AS_FRESH),
     )
     res_bob = await service.search(q_bob)
     logger.info("Results for Bob (HR):")
@@ -122,7 +95,6 @@ async def main() -> None:
         user_id="charlie",
         top_k=5,
         overfetch_factor=3.0,
-        consistency=ConsistencyToken(requirement=ConsistencyRequirement.AT_LEAST_AS_FRESH),
     )
     res_charlie = await service.search(q_charlie)
     logger.info("Results for Charlie (Guest):")

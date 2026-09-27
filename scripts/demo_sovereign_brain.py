@@ -1,4 +1,4 @@
-"""AegisMind Sovereign Second Brain — Live Demo Script.
+"""AegisMind Sovereign Second Brain: Live Demo Script.
 
 Run this to demonstrate the full system:
 1. Document ingestion
@@ -7,6 +7,7 @@ Run this to demonstrate the full system:
 4. Agent reasoning with graph context
 5. Approval gate demonstration
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,18 +22,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "aegismind-re
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "aegismind-types" / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "aegismind-ingestion" / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "aegismind-infra" / "src"))
-sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "aegismind-connector-sdk" / "src"))
+sys.path.insert(
+    0, str(Path(__file__).parent.parent / "packages" / "aegismind-connector-sdk" / "src")
+)
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages" / "aegismind-identity" / "src"))
 
+from aegismind_types import Principal
+
 from aegismind_core.routes import CoreState
-from aegismind_graph.engine import KnowledgeGraphEngine
-from aegismind_approval.gate import ApprovalGate
 
 
 async def demo() -> None:
     """Run the full sovereign brain demo."""
     print("=" * 60)
-    print("  AEGISMIND SOVEREIGN SECOND BRAIN — DEMO")
+    print("  AEGISMIND SOVEREIGN SECOND BRAIN: DEMO")
     print("=" * 60)
 
     # Initialize core state
@@ -57,7 +60,7 @@ async def demo() -> None:
     print("-" * 40)
     # The ingestion pipeline is available via state.ingestion_pipeline
     print("  Ready to ingest documents from ./demo_data/")
-    demo_files = list(Path("./demo_data").glob("*.md"))
+    demo_files = await asyncio.to_thread(lambda: list(Path("./demo_data").glob("*.md")))
     print(f"  Found {len(demo_files)} demo documents")
     for f in demo_files:
         print(f"    - {f.name}")
@@ -67,12 +70,12 @@ async def demo() -> None:
     print("-" * 40)
     if state.retrieval_pipeline:
         print("  Retrieval pipeline initialized")
-        result = await state.retrieval_pipeline.execute(
+        retrieval_res = await state.retrieval_pipeline.execute(
             query="sovereign AI platform",
-            principal={"id": "alice", "type": "user", "tenant_id": "corp-default"},
+            principal=Principal(id="alice", roles=["user"], tenant_id="corp-default"),
             top_k=5,
         )
-        print(f"  Found {len(result.results)} authorized chunks")
+        print(f"  Found {len(retrieval_res.results)} authorized chunks")
     else:
         print("  Retrieval pipeline not yet initialized (will start on first request)")
 
@@ -107,7 +110,7 @@ async def demo() -> None:
     print(f"  Connectors: {len(state.connectors)}")
 
     print("\n" + "=" * 60)
-    print("  DEMO COMPLETE — Start the web UI with:")
+    print("  DEMO COMPLETE: Start the web UI with:")
     print("  Terminal 1: uv run uvicorn aegismind_core.app:app --reload --port 8000")
     print("  Terminal 2: pnpm --filter lens dev")
     print("=" * 60)

@@ -1,4 +1,4 @@
-# AegisMind Setup Script — One-Command Installation
+# AegisMind Setup Script - One-Command Installation
 # Run this after cloning/forking the repository
 
 param(
@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
 
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  AEGISMIND SOVEREIGN SECOND BRAIN — SETUP" -ForegroundColor Cyan
+Write-Host "  AEGISMIND SOVEREIGN SECOND BRAIN: SETUP" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 
