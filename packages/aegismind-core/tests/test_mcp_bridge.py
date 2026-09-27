@@ -106,6 +106,11 @@ async def test_mcp_endpoints_and_jsonrpc() -> None:
         assert direct_data["isError"] is False
         assert len(direct_data["content"]) > 0
 
+        # 6. Verify Audited MCP Action in state.audit_log
+        mcp_audits = [e for e in state.audit_log if e.event_type == "mcp_action"]
+        assert len(mcp_audits) >= 1
+        assert any(e.action == "mcp_tool_call:aegismind_search" for e in mcp_audits)
+
 
 @pytest.mark.asyncio
 async def test_mcp_client_bridge() -> None:

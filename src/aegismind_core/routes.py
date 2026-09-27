@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import logging
+import os
 import re
 import uuid
 from collections.abc import AsyncIterator
@@ -1870,6 +1871,10 @@ async def perform_readiness_check(state: CoreState) -> tuple[bool, dict[str, str
     except Exception as exc:
         logger.warning("Readiness probe: LLM check failed: %s", exc)
         checks["llm"] = f"error: {exc}"
+
+    # 6. Air-gapped local operation mode
+    air_gapped = os.environ.get("AIR_GAPPED", "false").lower() in {"1", "true", "yes"}
+    checks["air_gapped_rag"] = "active" if air_gapped else "supported"
 
     return all_ok, checks
 

@@ -51,7 +51,7 @@ def create_mcp_router(
                             text="Retrieval pipeline is currently uninitialized.",
                         )
                     ],
-                    is_error=True,
+                    isError=True,
                 )
             query = str(args.get("query", ""))
             top_k = int(args.get("top_k", 5))
@@ -86,13 +86,35 @@ def create_mcp_router(
 
     @router.post("/rpc")
     async def rpc_endpoint(request: Request) -> dict[str, Any]:
-        """Model Context Protocol JSON-RPC 2.0 dispatch endpoint."""
+        """Model Context Protocol JSON-RPC 2.0 dispatch endpoint with audit trail."""
         try:
             body = await request.json()
         except Exception as exc:
             raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
-        return await bridge_server.handle_jsonrpc(body)
+        res = await bridge_server.handle_jsonrpc(body)
+
+        if (
+            body.get("method") == "tools/call"
+            and state is not None
+            and hasattr(state, "record_audit")
+        ):
+            params = body.get("params") or {}
+            tool_name = str(params.get("name", "unknown"))
+            args = params.get("arguments") or {}
+            principal_id = str(args.get("principal_id", "mcp-rpc-client"))
+            state.record_audit(
+                event_type="mcp_action",
+                principal_id=principal_id,
+                action=f"mcp_rpc_call:{tool_name}",
+                resource_id=tool_name,
+                metadata={
+                    "has_error": "error" in res,
+                    "arguments_keys": list(args.keys()),
+                },
+            )
+
+        return res
 
     @router.get("/tools")
     async def list_tools() -> dict[str, Any]:
@@ -102,13 +124,28 @@ def create_mcp_router(
 
     @router.post("/tools/{tool_name}")
     async def invoke_tool(tool_name: str, payload: DirectToolCallPayload) -> MCPToolCallResponse:
-        """Directly invoke an MCP tool with arguments."""
+        """Directly invoke an MCP tool with arguments and audit logging."""
         merged_args = dict(payload.arguments)
         merged_args.setdefault("principal_id", payload.principal_id)
         if payload.tenant_id:
             merged_args.setdefault("tenant_id", payload.tenant_id)
 
         req = MCPToolCallRequest(name=tool_name, arguments=merged_args)
-        return await bridge_server.call_tool(req)
+        res = await bridge_server.call_tool(req)
+
+        if state is not None and hasattr(state, "record_audit"):
+            state.record_audit(
+                event_type="mcp_action",
+                principal_id=payload.principal_id,
+                action=f"mcp_tool_call:{tool_name}",
+                resource_id=tool_name,
+                metadata={
+                    "is_error": res.isError,
+                    "tenant_id": payload.tenant_id,
+                    "arguments_keys": list(payload.arguments.keys()),
+                },
+            )
+
+        return res
 
     return router

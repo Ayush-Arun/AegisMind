@@ -38,6 +38,24 @@ def compute_recall_at_k(
     return 1.0 if matched else 0.0
 
 
+def compute_cross_section_recall(
+    retrieved_sections: Sequence[str],
+    expected_sections: Sequence[str],
+) -> float:
+    """Compute Cross-Section Recall measuring coverage across diverse document sections.
+
+    Cross-Section Recall measures the fraction of distinct required sections, documents,
+    or corpus categories represented in the retrieved top-k candidate chunks:
+        CrossSectionRecall = |RetrievedSections ∩ ExpectedSections| / |ExpectedSections|
+    """
+    if not expected_sections:
+        return 0.0
+    expected_set = set(expected_sections)
+    retrieved_set = set(retrieved_sections)
+    matched = retrieved_set.intersection(expected_set)
+    return round(len(matched) / len(expected_set), 4)
+
+
 def compute_reciprocal_rank(
     retrieved_doc_ids: Sequence[str],
     expected_doc_ids: Sequence[str],
