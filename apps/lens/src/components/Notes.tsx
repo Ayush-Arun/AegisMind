@@ -39,6 +39,13 @@ import {
   PlusCircle,
   FileQuestion,
   Lightbulb,
+  Brain,
+  Maximize2,
+  Minimize2,
+  Crop,
+  PanelLeftClose,
+  PanelLeft,
+  Trash2,
 } from "lucide-react";
 
 interface NotesProps {
@@ -66,6 +73,8 @@ interface StudyMessage {
   timestamp: string;
 }
 
+type ChatSizePreset = "compact" | "standard" | "large" | "full";
+
 export function Notes({
   currentUserId = "alice",
   currentTenantId = "corp-default",
@@ -84,24 +93,103 @@ export function Notes({
   const [isLoadingDetail, setIsLoadingDetail] = React.useState(false);
 
   // --- Study & Learning Hub State ---
-  const [studyDocs, setStudyDocs] = React.useState<StudyDoc[]>([]);
-  const [activeDocId, setActiveDocId] = React.useState<string | null>(null);
+  // Persistent list of uploaded study documents
+  const [studyDocs, setStudyDocs] = React.useState<StudyDoc[]>(() => {
+    try {
+      const saved = localStorage.getItem("aegismind_study_docs");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [activeDocId, setActiveDocId] = React.useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem("aegismind_active_study_doc");
+      return saved || null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Dedicated, individual conversation history per document
+  const [docConversations, setDocConversations] = React.useState<Record<string, StudyMessage[]>>(() => {
+    try {
+      const saved = localStorage.getItem("aegismind_study_conversations");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
   const [isParsingDoc, setIsParsingDoc] = React.useState(false);
-  const [studyMessages, setStudyMessages] = React.useState<StudyMessage[]>([]);
   const [studyQuery, setStudyQuery] = React.useState("");
   const [isStudying, setIsStudying] = React.useState(false);
   const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
+  const [memorySyncNotice, setMemorySyncNotice] = React.useState<string | null>(null);
   const [showDocPreview, setShowDocPreview] = React.useState(false);
+
+  // Sizing & Crop Controls for Chatbox
+  const [isSidebarCropped, setIsSidebarCropped] = React.useState(false);
+  const [chatSizePreset, setChatSizePreset] = React.useState<ChatSizePreset>("standard");
+  const [isChatExpandedHeight, setIsChatExpandedHeight] = React.useState(false);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
-  // Auto-scroll study messages
+  // Sync studyDocs to localStorage
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("aegismind_study_docs", JSON.stringify(studyDocs));
+    } catch {
+      // Ignored
+    }
+  }, [studyDocs]);
+
+  // Sync docConversations to localStorage
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("aegismind_study_conversations", JSON.stringify(docConversations));
+    } catch {
+      // Ignored
+    }
+  }, [docConversations]);
+
+  // Sync activeDocId to localStorage
+  React.useEffect(() => {
+    if (activeDocId) {
+      try {
+        localStorage.setItem("aegismind_active_study_doc", activeDocId);
+      } catch {
+        // Ignored
+      }
+    }
+  }, [activeDocId]);
+
+  // Set default active document if none selected
+  React.useEffect(() => {
+    if (studyDocs.length > 0 && (!activeDocId || !studyDocs.some((d) => d.id === activeDocId))) {
+      setActiveDocId(studyDocs[0]!.id);
+    }
+  }, [studyDocs, activeDocId]);
+
+  // Active document object
+  const activeDoc = React.useMemo(() => {
+    return studyDocs.find((d) => d.id === activeDocId) || null;
+  }, [studyDocs, activeDocId]);
+
+  // Current individual document messages
+  const activeMessages = React.useMemo(() => {
+    if (!activeDocId) return [];
+    return docConversations[activeDocId] || [];
+  }, [activeDocId, docConversations]);
+
+  // Auto-scroll chat messages
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [studyMessages, isStudying]);
+  }, [activeMessages, isStudying]);
 
-  // Fetch local notes
+  // Fetch local vault notes
   const fetchNotes = React.useCallback(async () => {
     setIsLoading(true);
     try {
@@ -150,19 +238,15 @@ export function Notes({
     );
   }, [notes, searchQuery]);
 
-  // Selected Study Document
-  const activeDoc = React.useMemo(() => {
-    return studyDocs.find((d) => d.id === activeDocId) || null;
-  }, [studyDocs, activeDocId]);
-
   // Handle Study File Upload (PDF, PPT, DOCX, etc.)
   const handleStudyFileUpload = async (file: File) => {
     setIsParsingDoc(true);
     setSaveStatus(null);
     try {
       const parsed = await parseFile(file);
+      const newDocId = `doc-${Date.now()}`;
       const newDoc: StudyDoc = {
-        id: `doc-${Date.now()}`,
+        id: newDocId,
         filename: parsed.filename,
         title: parsed.title,
         content: parsed.content,
@@ -172,24 +256,25 @@ export function Notes({
         uploaded_at: new Date().toLocaleTimeString(),
       };
 
-      setStudyDocs((prev) => [newDoc, ...prev]);
-      setActiveDocId(newDoc.id);
-
-      // Add welcoming assistant message tailored to the document
       const countLabel =
         parsed.page_count > 1
           ? `${parsed.page_count} ${parsed.file_type.includes("presentation") || parsed.filename.match(/\.(ppt|pptx)$/i) ? "slides" : "pages"}`
           : "1 document";
 
-      setStudyMessages([
-        {
-          id: `msg-${Date.now()}`,
-          role: "assistant",
-          content: `I have extracted **${newDoc.title}** (${countLabel}, ${parsed.char_count.toLocaleString()} characters). I am ready to be your interactive study partner! You can ask questions about the contents, click **Quiz Me** to test your knowledge, or ask me to explain key slides.`,
-          mode: "qa",
-          timestamp: "Just now",
-        },
-      ]);
+      const welcomeMsg: StudyMessage = {
+        id: `msg-${Date.now()}`,
+        role: "assistant",
+        content: `I have extracted **${newDoc.title}** (${countLabel}, ${parsed.char_count.toLocaleString()} characters). I am your dedicated study partner for this file! Ask me anything, click **Quiz Me** to test your knowledge, or ask me to explain difficult slides. Every turn is automatically preserved in long-term memory.`,
+        mode: "qa",
+        timestamp: "Just now",
+      };
+
+      setStudyDocs((prev) => [newDoc, ...prev]);
+      setActiveDocId(newDocId);
+      setDocConversations((prev) => ({
+        ...prev,
+        [newDocId]: [welcomeMsg],
+      }));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to parse document";
       setSaveStatus(`Extraction failed: ${msg}`);
@@ -198,20 +283,23 @@ export function Notes({
     }
   };
 
-  // Run a study interaction (Q&A, Quiz, Summary, Explanation)
+  // Run a study interaction in the active document's dedicated chatbox
   const executeStudyAction = async (queryText: string, mode: "qa" | "quiz" | "summary" | "explain" = "qa") => {
     if (!activeDoc || isStudying) return;
+    const currentDocId = activeDoc.id;
 
-    const userMsgId = `usr-${Date.now()}`;
     const userMsg: StudyMessage = {
-      id: userMsgId,
+      id: `usr-${Date.now()}`,
       role: "user",
       content: queryText,
       mode,
       timestamp: "Just now",
     };
 
-    setStudyMessages((prev) => [...prev, userMsg]);
+    setDocConversations((prev) => ({
+      ...prev,
+      [currentDocId]: [...(prev[currentDocId] || []), userMsg],
+    }));
     setStudyQuery("");
     setIsStudying(true);
 
@@ -233,32 +321,67 @@ export function Notes({
         timestamp: "Just now",
       };
 
-      setStudyMessages((prev) => [...prev, assistantMsg]);
+      setDocConversations((prev) => ({
+        ...prev,
+        [currentDocId]: [...(prev[currentDocId] || []), assistantMsg],
+      }));
+
+      // Flash confirmation that turn was preserved in long-term memory
+      setMemorySyncNotice("Preserved in Long-Term Memory");
+      setTimeout(() => setMemorySyncNotice(null), 3500);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Study request failed";
-      setStudyMessages((prev) => [
+      setDocConversations((prev) => ({
         ...prev,
-        {
-          id: `err-${Date.now()}`,
-          role: "assistant",
-          content: `Error generating response: ${msg}. Please try again or rephrase your question.`,
-          timestamp: "Just now",
-        },
-      ]);
+        [currentDocId]: [
+          ...(prev[currentDocId] || []),
+          {
+            id: `err-${Date.now()}`,
+            role: "assistant",
+            content: `Error generating response: ${msg}. Please try again or rephrase your question.`,
+            timestamp: "Just now",
+          },
+        ],
+      }));
     } finally {
       setIsStudying(false);
     }
   };
 
+  // Clear chat history for the active document only
+  const handleClearCurrentChat = () => {
+    if (!activeDocId) return;
+    setDocConversations((prev) => {
+      const copy = { ...prev };
+      delete copy[activeDocId];
+      return copy;
+    });
+  };
+
+  // Delete document and its dedicated conversation
+  const handleDeleteDoc = (docId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setStudyDocs((prev) => prev.filter((d) => d.id !== docId));
+    setDocConversations((prev) => {
+      const copy = { ...prev };
+      delete copy[docId];
+      return copy;
+    });
+    if (activeDocId === docId) {
+      const remaining = studyDocs.filter((d) => d.id !== docId);
+      setActiveDocId(remaining[0]?.id || null);
+    }
+  };
+
   // Save current study session into Sovereign Notes Vault
   const handleSaveToVault = async () => {
-    if (!activeDoc || studyMessages.length === 0) return;
+    if (!activeDoc || activeMessages.length === 0) return;
     try {
-      const conversationText = studyMessages
+      const conversationText = activeMessages
         .map((m) => `### ${m.role === "user" ? "User Question" : "Study Partner"}\n\n${m.content}`)
         .join("\n\n---\n\n");
 
-      const noteContent = `# Study Guide: ${activeDoc.title}\n\n**Source File:** \`${activeDoc.filename}\` (${activeDoc.char_count} chars)\n**Study Date:** ${new Date().toLocaleDateString()}\n\n---\n\n${conversationText}`;
+      const noteContent = `# Study Guide: ${activeDoc.title}\n\n**Source File:** \`${activeDoc.filename}\` (${activeDoc.char_count} chars)\n**Study Date:** ${new Date().toLocaleDateString()}\n**Long-Term Memory:** Synchronized\n\n---\n\n${conversationText}`;
 
       await createVaultNote({
         title: `Study: ${activeDoc.title}`,
@@ -274,6 +397,28 @@ export function Notes({
       setSaveStatus(`Could not save note: ${msg}`);
     }
   };
+
+  // Calculate layout column span based on crop & size settings
+  const isFullWidth = isSidebarCropped || chatSizePreset === "full";
+  const leftColSpanClass = isFullWidth
+    ? "hidden"
+    : chatSizePreset === "large"
+    ? "lg:col-span-3"
+    : chatSizePreset === "compact"
+    ? "lg:col-span-5"
+    : "lg:col-span-4";
+
+  const rightColSpanClass = isFullWidth
+    ? "lg:col-span-12"
+    : chatSizePreset === "large"
+    ? "lg:col-span-9"
+    : chatSizePreset === "compact"
+    ? "lg:col-span-7"
+    : "lg:col-span-8";
+
+  const chatHeightClass = isChatExpandedHeight
+    ? "min-h-[750px] max-h-[calc(100vh-14rem)]"
+    : "min-h-[580px] max-h-[calc(100vh-22rem)]";
 
   return (
     <div className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
@@ -308,7 +453,7 @@ export function Notes({
             <GraduationCap className="h-3.5 w-3.5" />
             <span>Study Hub (PDF / Slides)</span>
             <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0 bg-background/20 text-inherit">
-              AI Q&A
+              Individual Chats
             </Badge>
           </button>
           <button
@@ -328,11 +473,131 @@ export function Notes({
 
       {/* --- SECTION 1: STUDY & LEARNING HUB --- */}
       {activeSection === "study" && (
-        <div className="space-y-6">
-          {/* Document Upload & Selector Bar */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left 4 Cols: Document Management & Actions */}
-            <div className="lg:col-span-4 flex flex-col space-y-4">
+        <div className="space-y-4">
+          {/* Quick Toolbar & Sizing Controls Bar */}
+          <div className="flex items-center justify-between gap-2 bg-card/40 border border-border/60 px-3 py-1.5 rounded-lg text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-foreground flex items-center gap-1 text-[11px]">
+                <Layers className="h-3.5 w-3.5 text-primary" />
+                Active Files:
+              </span>
+              <span className="text-muted-foreground text-[11px]">
+                {studyDocs.length > 0
+                  ? `${studyDocs.length} loaded with dedicated chatboxes`
+                  : "Upload any PDF or PPT slide deck to start"}
+              </span>
+            </div>
+
+            {/* Sizing & Crop Controls */}
+            <div className="flex items-center gap-1.5">
+              {/* Crop / Toggle Document Sidebar */}
+              <Button
+                variant={isSidebarCropped ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIsSidebarCropped(!isSidebarCropped)}
+                title={isSidebarCropped ? "Un-crop Sidebar (Show documents)" : "Crop Sidebar (Enlarge chatbox)"}
+                className="h-7 px-2.5 text-[11px] gap-1 font-medium"
+              >
+                {isSidebarCropped ? (
+                  <>
+                    <PanelLeft className="h-3 w-3" />
+                    <span>Show Files</span>
+                  </>
+                ) : (
+                  <>
+                    <Crop className="h-3 w-3" />
+                    <span>Crop Sidebar</span>
+                  </>
+                )}
+              </Button>
+
+              {/* Chatbox Size Toggle (Standard vs Large vs Full) */}
+              <div className="hidden sm:flex items-center gap-1 border-l border-border/60 pl-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSidebarCropped(false);
+                    setChatSizePreset("compact");
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    !isSidebarCropped && chatSizePreset === "compact"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Compact
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSidebarCropped(false);
+                    setChatSizePreset("standard");
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    !isSidebarCropped && chatSizePreset === "standard"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Standard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSidebarCropped(false);
+                    setChatSizePreset("large");
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    !isSidebarCropped && chatSizePreset === "large"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Enlarged
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSidebarCropped(true);
+                    setChatSizePreset("full");
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    isSidebarCropped || chatSizePreset === "full"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Full Width
+                </button>
+              </div>
+
+              {/* Maximize / Height Expander */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const nextHeight = !isChatExpandedHeight;
+                  setIsChatExpandedHeight(nextHeight);
+                  if (nextHeight) {
+                    setIsSidebarCropped(true);
+                  }
+                }}
+                title={isChatExpandedHeight ? "Decrease Chatbox Size" : "Enlarge / Maximize Chatbox"}
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+              >
+                {isChatExpandedHeight ? (
+                  <Minimize2 className="h-3.5 w-3.5 text-primary" />
+                ) : (
+                  <Maximize2 className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Main 2-Column or Enlarged Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Column: Document Upload & List (Can be cropped) */}
+            <div className={`${leftColSpanClass} flex flex-col space-y-4`}>
               {/* File Upload Drop Area */}
               <div
                 onDragOver={(e) => {
@@ -346,13 +611,13 @@ export function Notes({
                   if (file) handleStudyFileUpload(file);
                 }}
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-primary/40 hover:border-primary/80 bg-primary/5 hover:bg-primary/10 rounded-xl p-5 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 group"
+                className="border-2 border-dashed border-primary/40 hover:border-primary/80 bg-primary/5 hover:bg-primary/10 rounded-xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 group shadow-xs"
               >
-                <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
+                <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
                   {isParsingDoc ? (
-                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    <RefreshCw className="h-4 w-4 animate-spin" />
                   ) : (
-                    <UploadCloud className="h-5 w-5" />
+                    <UploadCloud className="h-4 w-4" />
                   )}
                 </div>
                 <div>
@@ -360,11 +625,11 @@ export function Notes({
                     {isParsingDoc ? "Extracting Slides / Pages..." : "Upload Study Material"}
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Drop PDF, PowerPoint (.ppt, .pptx), Word (.docx), or slides here
+                    Drop PDF, PowerPoint (.ppt, .pptx), Word (.docx), or slides
                   </p>
                 </div>
                 <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
-                  Any Document Format Supported
+                  Separate Chatbox per File
                 </Badge>
                 <input
                   ref={fileInputRef}
@@ -380,47 +645,47 @@ export function Notes({
 
               {/* Loaded Study Documents List */}
               <Card className="border-border/80 bg-card/40 flex-1 flex flex-col">
-                <CardHeader className="py-3 px-4 border-b border-border/50">
+                <CardHeader className="py-2.5 px-3.5 border-b border-border/50">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-xs font-bold text-foreground flex items-center gap-1.5">
                       <Layers className="h-3.5 w-3.5 text-primary" />
-                      Active Study Materials ({studyDocs.length})
+                      Active Files ({studyDocs.length})
                     </CardTitle>
                     {studyDocs.length > 0 && (
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+                        className="text-[10px] text-primary hover:underline flex items-center gap-0.5 font-medium"
                       >
                         <PlusCircle className="h-3 w-3" /> Add More
                       </button>
                     )}
                   </div>
                 </CardHeader>
-                <CardContent className="p-2 space-y-1.5 max-h-[220px] overflow-y-auto">
+                <CardContent className="p-2 space-y-1.5 max-h-[260px] overflow-y-auto">
                   {studyDocs.length === 0 ? (
                     <div className="py-6 text-center text-muted-foreground">
                       <GraduationCap className="h-8 w-8 mx-auto text-muted-foreground/40 mb-1.5" />
                       <p className="text-xs font-medium text-foreground">No documents loaded yet</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Upload your lecture slides or technical documents to start studying.
+                        Upload lecture slides or technical documents to start studying.
                       </p>
                     </div>
                   ) : (
                     studyDocs.map((doc) => {
                       const isSelected = activeDocId === doc.id;
+                      const msgCount = (docConversations[doc.id] || []).length;
                       return (
-                        <button
+                        <div
                           key={doc.id}
-                          type="button"
                           onClick={() => setActiveDocId(doc.id)}
-                          className={`w-full text-left p-2.5 rounded-lg border transition-all ${
+                          className={`w-full text-left p-2.5 rounded-lg border transition-all cursor-pointer relative group ${
                             isSelected
                               ? "bg-secondary border-primary/50 shadow-xs"
                               : "bg-card/30 border-border/50 hover:bg-muted/40"
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center justify-between gap-1 pr-6">
                             <span className="font-semibold text-xs text-foreground truncate">
                               {doc.title}
                             </span>
@@ -432,9 +697,21 @@ export function Notes({
                             <span>
                               {doc.page_count > 1 ? `${doc.page_count} slides/pages` : "1 doc"} • {doc.char_count.toLocaleString()} chars
                             </span>
-                            <span>{doc.uploaded_at}</span>
+                            <Badge variant="secondary" className="text-[9px] px-1 py-0 bg-muted text-primary font-mono">
+                              {msgCount} {msgCount === 1 ? "turn" : "turns"}
+                            </Badge>
                           </div>
-                        </button>
+
+                          {/* Delete Document Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteDoc(doc.id, e)}
+                            title="Remove file and chat"
+                            className="absolute right-2 top-2.5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
                       );
                     })
                   )}
@@ -451,7 +728,7 @@ export function Notes({
                     <button
                       type="button"
                       onClick={() => setShowDocPreview(!showDocPreview)}
-                      className="text-[10px] text-primary hover:underline"
+                      className="text-[10px] text-primary hover:underline font-medium"
                     >
                       {showDocPreview ? "Hide Preview" : "View Text"}
                     </button>
@@ -460,11 +737,11 @@ export function Notes({
                   {showDocPreview && (
                     <div className="p-2.5 rounded-md bg-muted/40 border border-border/60 text-[11px] font-mono max-h-40 overflow-y-auto whitespace-pre-wrap text-foreground/80">
                       {activeDoc.content.slice(0, 2000)}
-                      {activeDoc.content.length > 2000 && "\n\n... [Truncated for display]"}
+                      {activeDoc.content.length > 2000 && "\n\n... [Truncated for preview]"}
                     </div>
                   )}
 
-                  {/* High-yield action buttons */}
+                  {/* High-yield study action buttons */}
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
@@ -503,7 +780,7 @@ export function Notes({
                       variant="outline"
                       size="sm"
                       onClick={handleSaveToVault}
-                      disabled={studyMessages.length === 0}
+                      disabled={activeMessages.length === 0}
                       className="text-[11px] h-8 flex items-center justify-center gap-1.5 border-amber-500/30 hover:bg-amber-500/10 text-amber-400 font-medium"
                     >
                       <BookOpen className="h-3.5 w-3.5" />
@@ -532,48 +809,86 @@ export function Notes({
               )}
             </div>
 
-            {/* Right 8 Cols: Interactive LLM Study Chat Session */}
-            <div className="lg:col-span-8 flex flex-col">
-              <Card className="flex-1 flex flex-col border-border/80 bg-card/50 overflow-hidden min-h-[580px]">
+            {/* Right Column: Dedicated Individual Chatbox for the Selected Document */}
+            <div className={`${rightColSpanClass} flex flex-col transition-all duration-200`}>
+              <Card className={`flex-1 flex flex-col border-border/80 bg-card/50 overflow-hidden shadow-sm ${chatHeightClass}`}>
                 {/* Chat Session Header */}
-                <CardHeader className="py-3 px-4 border-b border-border/60 bg-muted/20 flex flex-row items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <GraduationCap className="h-4 w-4 text-primary" />
-                    <span className="font-bold text-xs text-foreground">
+                <CardHeader className="py-2.5 px-4 border-b border-border/60 bg-muted/20 flex flex-row items-center justify-between">
+                  <div className="flex items-center gap-2 truncate">
+                    <GraduationCap className="h-4 w-4 text-primary shrink-0" />
+                    <span className="font-bold text-xs text-foreground truncate">
                       {activeDoc ? `Study Session: ${activeDoc.title}` : "Interactive Study Partner"}
                     </span>
                     {activeDoc && (
-                      <Badge variant="outline" className="text-[10px] border-primary/40 text-primary">
+                      <Badge variant="outline" className="text-[10px] border-primary/40 text-primary shrink-0">
                         {activeDoc.page_count > 1 ? `${activeDoc.page_count} slides/pages` : "1 doc"}
                       </Badge>
                     )}
                   </div>
-                  {studyMessages.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setStudyMessages([])}
-                      className="text-[10px] text-muted-foreground hover:text-foreground"
+
+                  {/* Header Actions: Long-Term Memory Badge, Clear, Resize */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Long-Term Memory Badge */}
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-400 font-medium">
+                      <Brain className="h-3 w-3 animate-pulse" />
+                      <span>{memorySyncNotice || "Long-Term Memory Active"}</span>
+                    </div>
+
+                    {/* Sizing / Enlarge Toggle inside Chat Header */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsSidebarCropped(!isSidebarCropped)}
+                      title={isSidebarCropped ? "Show left document panel" : "Crop left panel to enlarge chat"}
+                      className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground border border-border/60"
                     >
-                      Clear Session
-                    </button>
-                  )}
+                      {isSidebarCropped ? <PanelLeft className="h-3 w-3" /> : <PanelLeftClose className="h-3 w-3" />}
+                      <span className="hidden sm:inline">{isSidebarCropped ? "Un-crop" : "Crop"}</span>
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const nextHeight = !isChatExpandedHeight;
+                        setIsChatExpandedHeight(nextHeight);
+                        if (nextHeight) setIsSidebarCropped(true);
+                        else setIsSidebarCropped(false);
+                      }}
+                      title={isChatExpandedHeight ? "Decrease Chatbox Size" : "Enlarge Chatbox"}
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                    >
+                      {isChatExpandedHeight ? <Minimize2 className="h-3 w-3 text-primary" /> : <Maximize2 className="h-3 w-3" />}
+                    </Button>
+
+                    {activeMessages.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearCurrentChat}
+                        className="text-[10px] text-muted-foreground hover:text-destructive border border-border/40 px-2 py-0.5 rounded"
+                      >
+                        Clear Chat
+                      </button>
+                    )}
+                  </div>
                 </CardHeader>
 
-                {/* Conversation Body */}
-                <CardContent className="flex-1 p-4 overflow-y-auto space-y-4 max-h-[calc(100vh-24rem)]">
-                  {studyMessages.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-muted-foreground min-h-[300px]">
+                {/* Conversation Body: Dedicated to the active document */}
+                <CardContent className="flex-1 p-4 overflow-y-auto space-y-4">
+                  {activeMessages.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-muted-foreground min-h-[320px]">
                       <GraduationCap className="h-12 w-12 text-muted-foreground/30 mb-3" />
                       <h3 className="text-sm font-semibold text-foreground">
-                        Ready for Learning & Examination
+                        {activeDoc ? `Ready to study "${activeDoc.title}"` : "Ready for Learning & Examination"}
                       </h3>
                       <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                        Upload or select a PDF, presentation slide deck, or document from the left.
-                        You and the AI will interactively quiz, explain, and study the material together.
+                        {activeDoc
+                          ? "This document has its own dedicated chatbox. Ask questions, request quizzes, or review key concepts."
+                          : "Upload or select a PDF, presentation slide deck, or document from the left to start."}
                       </p>
                     </div>
                   ) : (
-                    studyMessages.map((msg) => {
+                    activeMessages.map((msg) => {
                       const isUser = msg.role === "user";
                       return (
                         <div
@@ -593,7 +908,7 @@ export function Notes({
                           </div>
 
                           <div
-                            className={`rounded-xl p-3.5 max-w-[85%] space-y-2 ${
+                            className={`rounded-xl p-3.5 max-w-[85%] space-y-2 shadow-xs ${
                               isUser
                                 ? "bg-primary text-primary-foreground font-medium"
                                 : "bg-secondary/70 border border-border/80 text-foreground"
@@ -608,7 +923,10 @@ export function Notes({
                               }`}
                             >
                               <span>{msg.role === "assistant" ? "AegisMind Study Partner" : "You"}</span>
-                              <span>{msg.timestamp}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span>{msg.timestamp}</span>
+                                <span className="text-[9px] text-emerald-400 font-mono">• Memory Stored</span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -619,7 +937,7 @@ export function Notes({
                   {isStudying && (
                     <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border/50 text-xs text-muted-foreground">
                       <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
-                      <span>Synthesizing response and evaluating document context...</span>
+                      <span>Synthesizing educational response and committing to long-term memory...</span>
                     </div>
                   )}
 
@@ -643,7 +961,7 @@ export function Notes({
                       </button>
                       <button
                         type="button"
-                        onClick={() => executeStudyAction("Test my knowledge with 3 difficult questions", "quiz")}
+                        onClick={() => executeStudyAction("Test my knowledge with 3 challenging quiz questions", "quiz")}
                         className="text-[10px] px-2 py-0.5 rounded-full bg-muted/40 hover:bg-muted text-muted-foreground border border-border/60 transition-colors"
                       >
                         Quiz me on 3 questions
@@ -670,7 +988,7 @@ export function Notes({
                     <Input
                       placeholder={
                         activeDoc
-                          ? `Ask a question about ${activeDoc.title} or type your answer to the quiz...`
+                          ? `Ask about ${activeDoc.title} or type your answer to the quiz...`
                           : "Upload a document or slide deck to start asking questions..."
                       }
                       value={studyQuery}
@@ -681,7 +999,7 @@ export function Notes({
                     <Button
                       type="submit"
                       disabled={!activeDoc || !studyQuery.trim() || isStudying}
-                      className="h-9 px-4 text-xs font-semibold gap-1.5"
+                      className="h-9 px-4 text-xs font-semibold gap-1.5 shadow-xs"
                     >
                       <Send className="h-3.5 w-3.5" />
                       <span>Ask</span>

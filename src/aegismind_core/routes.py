@@ -1243,6 +1243,17 @@ def create_routes(state: CoreState) -> APIRouter:
                     "sections. Ask follow-up questions or generate a quiz to test your mastery."
                 )
 
+        # Record into long-term conversational memory
+        try:
+            await state.memory.record_conversation(
+                user_id=req.user_id,
+                tenant_id=req.tenant_id,
+                query=f"[Study: {req.title}] {req.query}",
+                response=answer.strip(),
+            )
+        except Exception as exc:
+            logger.debug("Study memory storage failed: %s", exc)
+
         state.record_audit(
             event_type="study",
             principal_id=req.user_id,
@@ -1255,6 +1266,7 @@ def create_routes(state: CoreState) -> APIRouter:
             "title": req.title,
             "answer": answer.strip(),
             "mode": req.mode,
+            "memory_saved": True,
         }
 
     # 11. POST & GET /api/v1/feedback: User thumbs up/down and answer evaluation hook

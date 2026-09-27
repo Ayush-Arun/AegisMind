@@ -104,6 +104,7 @@ export interface StudyResponse {
   title: string;
   answer: string;
   mode: string;
+  memory_saved?: boolean;
 }
 
 export interface ResourceItem {
