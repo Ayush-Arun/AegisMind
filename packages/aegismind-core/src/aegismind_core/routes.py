@@ -638,19 +638,39 @@ def create_routes(state: CoreState) -> APIRouter:
             if is_legal_query:
                 from aegismind_core.legal.swarm import LegalSwarmOrchestrator
 
+                # Extract posture, branch, and forum if explicitly provided in query text
+                posture = "Defense / Accused"
+                branch = "Criminal Law"
+                forum = "Trial Court / High Court"
+
+                m_posture = re.search(r"(?:Client Posture|Posture)\s*[:\t]\s*([^\n\r]+)", query, re.I)
+                if m_posture:
+                    posture = m_posture.group(1).strip()
+
+                m_branch = re.search(r"(?:Branch of Law|Branch)\s*[:\t]\s*([^\n\r]+)", query, re.I)
+                if m_branch:
+                    branch = m_branch.group(1).strip()
+
+                m_forum = re.search(r"Forum\s*[:\t]\s*([^\n\r]+)", query, re.I)
+                if m_forum:
+                    forum = m_forum.group(1).strip()
+
                 yield "event: thinking\ndata: Reading case record & extracting factual matrix...\n\n"
                 await asyncio.sleep(0.04)
-                yield "event: thinking\ndata: Adversarial Hunter: Stress-testing evidence, statutory compliance & procedural gaps...\n\n"
+                yield "event: thinking\ndata: Auditing statutory compliance & evidentiary defects...\n\n"
                 await asyncio.sleep(0.04)
-                yield "event: thinking\ndata: Verifying verbatim quotes against case record...\n\n"
+                yield "event: thinking\ndata: Verifying verbatim quotes against record...\n\n"
                 await asyncio.sleep(0.04)
-                yield "event: thinking\ndata: Searching Supreme Court SCR precedent corpus for binding ratios...\n\n"
-                await asyncio.sleep(0.04)
-                yield "event: thinking\ndata: Formulating tactical defense battle plan & cross-examination questions...\n\n"
+                yield "event: thinking\ndata: Preparing defence strategy and cross-examination questions...\n\n"
 
                 orchestrator = LegalSwarmOrchestrator()
                 try:
-                    legal_res = await orchestrator.analyze_case_grounded(case_text=query)
+                    legal_res = await orchestrator.analyze_case_grounded(
+                        case_text=query,
+                        posture=posture,
+                        branch=branch,
+                        forum=forum,
+                    )
                 except Exception as exc:
                     logger.error("Legal grounded analysis failed: %s", exc)
                     legal_res = f"⚠️ Analysis failed: {exc}. Please verify Ollama is running with model 'qwen3.5:9b'."

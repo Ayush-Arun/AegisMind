@@ -155,13 +155,44 @@ class LegalSwarmOrchestrator:
         """Step 1 & 2: Structured grounded audit. Strictly reads ONLY provided text."""
         log.warning("INPUT len=%d first200=%r", len(text), text[:200])
 
-        system_instruction = f"""You are a senior Indian litigator and defense counsel. You act for the {posture} in a
+        # Dynamic branch detection
+        t_low = text.lower()
+        is_ndps = any(k in t_low for k in ["ndps", "narcotic", "heroin", "ganja", "contraband", "malkhana", "section 21", "section 29", "section 52a", "section 50"])
+        is_cyber_bank = any(k in t_low for k in ["bank", "maker-checker", "server log", "cctv", "dormant", "it act", "section 66", "internal audit"])
+
+        specialized_instructions = ""
+        if is_ndps:
+            specialized_instructions = """
+SPECIALIZED NDPS LITIGATION RULES:
+1. Section 52A NDPS: Inventory and drawing of samples MUST be certified in the presence of a Magistrate. Delay or spot sampling without Magistrate vitiates prosecution.
+2. Section 50 NDPS: Notice of right to be searched before Gazetted Officer / Magistrate applies STRICTLY to personal search of the body/trousers (15g). It does NOT apply to search of bags, luggage, or premises (1.2kg). Do not overstate Section 50 to bag recoveries.
+3. Section 43 NDPS: Search in a bus terminus or public place falls under Section 43 (public place), so strict Section 42 compliance is not required.
+4. Section 67 NDPS: Confessional statements to investigating officers are completely inadmissible in evidence.
+5. Chain of custody: Flag any weight discrepancy (e.g. 1.185kg vs 1.2kg; 4.6g received by FSL), unlogged custody in personal lockers, and delay in sending samples to FSL.
+6. Witnesses: Flag hostile panch witnesses and professional "stock" witnesses (used repeatedly by the agency).
+7. Constitutional safeguards: 24-hour production before Magistrate under Art 22(2) & Section 58 BNSS; oral grounds of arrest defect.
+8. Bail: Address Section 37 twin conditions and long custody.
+"""
+        elif is_cyber_bank:
+            specialized_instructions = """
+SPECIALIZED CRIMINAL FRAUD & ELECTRONIC EVIDENCE RULES:
+1. Section 63(4) BSA / Section 65B IEA: Mandatory certificate required for secondary electronic records (server logs, CCTV). Certificate MUST be signed by the person in lawful control/management who extracted the data. Uncertified logs or certificates signed by an uninvolved manager are fatal defects.
+2. CCTV timestamp reliability: Unsynchronized timestamps and alibi supported by approved leave records create reasonable doubt.
+3. Maker-checker credentials: If checker passwords were shared or operational officers were not examined, liability cannot be pinned exclusively on accused.
+4. Internal audit hearsay: The audit report is inadmissible hearsay unless its author is cited and examined as a witness.
+5. Search & Seizure: Mandatory audio-video recording under Section 105 BNSS; panchnama by police employees is not independent; explanation of cash with bank withdrawal slips.
+6. Circumstantial evidence: Where no direct eyewitness exists, circumstantial chain must be complete (Sharad Birdhichand Sarda). Hostile KYC links and absconding co-beneficiaries break the chain.
+7. Distractor: Private banks do NOT require prior government sanction (Section 197 CrPC / Section 218 BNSS). Do NOT raise sanction.
+"""
+
+        system_instruction = f"""You are an elite Indian trial advocate and criminal defense counsel. You act for the {posture} in a
 {branch} matter before {forum}. Use BNS/BNSS/BSA for post-July-2024 matters, and IPC/CrPC/IEA/NDPS/IT/NI Act where applicable.
-Read ONLY the text provided.
-Every weakness MUST cite a paragraph reference (para_ref) AND a verbatim quote from the text.
-Do not invent facts, sections, dates, weights, or case names. Include the other side's real strengths.
-If something is not in the text, list it under unclear_or_missing. Do not raise arguments
-that don't apply to this branch or forum (e.g. limitation or statutory notice in a criminal trial).
+{specialized_instructions}
+CRITICAL RULES:
+- Never raise civil doctrines (limitation, non-joinder of parties, statutory notice) in criminal matters.
+- Every weakness MUST cite a paragraph reference (para_ref) AND an EXACT verbatim quote from the text.
+- Do not invent facts, sections, dates, weights, or case names. Include the other side's real strengths.
+- If something is missing from the record, list it under unclear_or_missing.
 
 OUTPUT MUST BE VALID JSON ONLY with this schema:
 {{
@@ -169,17 +200,17 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
     {{
       "title": "Clear descriptive title of defect",
       "severity": "HIGH",
-      "para_ref": "e.g. para 4, line 12, or Page 2",
-      "quote": "EXACT verbatim quote from text",
-      "statute": "e.g. BSA 2023 s.63(4), NDPS Act s.52A, CrPC s.468, BNS s.318",
-      "why_it_matters": "Why this flaw destroys or damages the case against client",
-      "opposing_counter": "What the prosecution/complainant will argue in reply"
+      "para_ref": "para number from text",
+      "quote": "verbatim quote directly from text",
+      "statute": "specific Indian statute section e.g. NDPS Act s.52A, BSA s.63(4), BNSS s.105",
+      "why_it_matters": "Why this fatal flaw destroys the case against client",
+      "opposing_counter": "Anticipated argument of prosecution"
     }}
   ],
-  "facts_summary": "1-2 sentence core summary of admitted facts and allegations from text",
-  "issues": ["Issue 1", "Issue 2"],
-  "other_side_strengths": ["Documentary exhibits or witness claims that favour the opponent"],
-  "unclear_or_missing": ["Vital details absent from the text, e.g. forensic certificates, seal details, dates"]
+  "facts_summary": "1-2 concise sentences summarizing the core charge and situation",
+  "issues": ["Core issue 1", "Core issue 2"],
+  "other_side_strengths": ["Real exhibits or claims favoring opponent"],
+  "unclear_or_missing": ["Vital missing documentation or unexplained gaps"]
 }}
 """
         user_prompt = f"CASE DOSSIER / PLEADING TEXT:\n{text[:6000]}"
@@ -255,19 +286,19 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
         )
 
         # Step 5: Generate dynamic Battle Plan & Cross-Examination from verified weaknesses
-        battle_plan_prompt = f"""You are a senior trial advocate. Given these verified weaknesses from the case:
+        battle_plan_prompt = f"""You are a senior Indian trial advocate preparing the courtroom battle plan for {posture}.
+Verified evidentiary defects and statutory violations:
 {json.dumps(good_weaknesses, indent=2)}
 
-And the other side's strengths:
+Prosecution's strengths:
 {json.dumps(audit.get('other_side_strengths', []), indent=2)}
 
-For each HIGH/MEDIUM weakness:
-1. Specify the exact procedural motion/application (e.g. S.52A NDPS challenge, S.63(4) BSA / S.65B IEA electronic evidence objection, S.482 CrPC / S.528 BNSS quashing, discharge under S.227/239 CrPC).
-2. Specify the exact courtroom stage to raise it.
-3. Give 3 actionable steps.
-4. Formulate 3 pointed cross-examination questions for the specific witness named in the text (e.g. IO, Seizure witness, Complainant).
+Provide a sharp, aggressive, practical trial strategy:
+1. Procedural Applications: State the exact motions to file (e.g. S.52A NDPS non-compliance challenge, S.63(4) BSA electronic record objection, Discharge application under Section 227/239, Bail under Section 37 / long custody, S.58 BNSS illegal detention). Specify the exact courtroom stage.
+2. Defense Narrative: Formulate the central defense theory (e.g. broken chain of custody, scapegoat for systemic migration failure / alibi).
+3. Cross-Examination Artillery: Formulate 3-4 pointed, trap cross-examination questions for each specific prosecution witness named in the dossier (e.g. PW-1, PW-2, PW-3, IO) designed to extract fatal admissions under Indian trial procedure.
 
-OUTPUT FORMAT: Clear markdown with headings, no boilerplate."""
+OUTPUT FORMAT: Clear markdown with headings, no boilerplate or filler."""
 
         battle_plan = await self._call_llm(
             "You are a battle-tested Indian defense litigator. Provide specific, aggressive, realistic trial strategies.",
