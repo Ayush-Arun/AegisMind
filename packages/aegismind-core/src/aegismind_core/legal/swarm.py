@@ -116,7 +116,7 @@ class LegalSwarmOrchestrator:
         self,
         system_prompt: str,
         user_prompt: str,
-        max_tokens: int = 700,
+        max_tokens: int = 2500,
         model: str = "qwen3.5:9b",
     ) -> AsyncIterator[str]:
         """Stream response tokens from Ollama with zero thinking overhead and GPU acceleration."""
@@ -169,7 +169,7 @@ class LegalSwarmOrchestrator:
         ):
             yield chunk
 
-    async def _call_llm(self, system_prompt: str, user_prompt: str, max_tokens: int = 800, model: str = "qwen3.5:9b") -> str:
+    async def _call_llm(self, system_prompt: str, user_prompt: str, max_tokens: int = 2500, model: str = "qwen3.5:9b") -> str:
         """Call Ollama with zero thinking overhead and GPU acceleration."""
         formatted_prompt = (
             f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
@@ -493,7 +493,7 @@ GUIDELINES:
         async for chunk in self._call_llm_stream(
             system_prompt=system_instruction,
             user_prompt=user_prompt,
-            max_tokens=700,
+            max_tokens=2500,
             model=model,
         ):
             yield chunk
