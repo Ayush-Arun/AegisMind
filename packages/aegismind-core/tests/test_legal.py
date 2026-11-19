@@ -48,3 +48,25 @@ def test_legal_upload_case_text():
     assert res_data["filename"] == "petition.txt"
     assert "Ramesh Sharma" in res_data["extracted_text"]
     assert res_data["character_count"] > 50
+
+@pytest.mark.asyncio
+async def test_asdf_input_rejected():
+    from aegismind_core.legal.swarm import LegalSwarmOrchestrator
+    orchestrator = LegalSwarmOrchestrator()
+    result = await orchestrator.analyze_case_grounded("asdf")
+    assert "Insufficient Case Details" in result
+    assert "asdf" in result
+
+def test_quote_verification():
+    from aegismind_core.legal.swarm import LegalSwarmOrchestrator
+    orchestrator = LegalSwarmOrchestrator()
+    source = "The accused was detained for 38 hours before production without Magistrate order."
+    weaknesses = [
+        {"title": "Production Delay", "quote": "38 hours before production", "severity": "HIGH"},
+        {"title": "Fake Weakness", "quote": "The knife had blood stains", "severity": "HIGH"},
+    ]
+    good, dropped = orchestrator.verify_quotes(weaknesses, source)
+    assert len(good) == 1
+    assert good[0]["title"] == "Production Delay"
+    assert dropped == 1
+

@@ -126,7 +126,7 @@ class OllamaAdapter:
         if options:
             payload["options"] = options
 
-        timeout_val = float(os.environ.get("OLLAMA_TIMEOUT", "120.0"))
+        timeout_val = float(os.environ.get("OLLAMA_TIMEOUT", "300.0"))
 
         with trace_span(
             "llm.ollama.generate",
@@ -195,7 +195,7 @@ class OllamaAdapter:
         if options:
             payload["options"] = options
 
-        timeout_val = float(os.environ.get("OLLAMA_TIMEOUT", "120.0"))
+        timeout_val = float(os.environ.get("OLLAMA_TIMEOUT", "300.0"))
 
         with trace_span(
             "llm.ollama.stream_generate",

@@ -1,15 +1,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { streamChat, listModels, parseFile, type Citation, type ModelInfo } from "@/lib/api";
+import { streamChat, listModels, parseFile, type ModelInfo } from "@/lib/api";
 import { recordExchange } from "@/lib/conversationStore";
 import { format12HrDateTime } from "@/lib/utils";
 import {
@@ -19,7 +11,6 @@ import {
   FileText,
   Paperclip,
   X,
-  ExternalLink,
   Cpu,
   Lock,
   CornerDownRight,
@@ -56,7 +47,6 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   thinking?: string;
-  citations?: Citation[];
   timestamp: string;
   attachments?: MessageAttachment[];
 }
@@ -101,7 +91,6 @@ export function Chat({
   const [selectedModel, setSelectedModel] = React.useState<string>("");
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [currentThinking, setCurrentThinking] = React.useState<string | null>(null);
-  const [selectedCitation, setSelectedCitation] = React.useState<Citation | null>(null);
   // When recallMode is true the user is asking the agent to retrieve answers
   // from past conversation memory across all chatboxes
   const [recallMode, setRecallMode] = React.useState(false);
@@ -123,7 +112,6 @@ export function Chat({
     ]);
     setConvId(`chat-${Date.now()}`);
     setConvTitle("");
-    setSelectedCitation(null);
   };
 
   const {
@@ -368,7 +356,7 @@ export function Chat({
               setCurrentThinking(`Reading attached document: ${att.name}...`);
               const res = await parseFile(att.file);
               if (res.content) {
-                textSnippets.push(`--- Attached File: ${att.name} ---\n${res.content.slice(0, 4000)}`);
+                textSnippets.push(`--- Attached File: ${att.name} ---\n${res.content.slice(0, 60000)}`);
               }
             } catch {
               // fallback if parser endpoint has issues
@@ -408,12 +396,8 @@ export function Chat({
           )
         );
       },
-      onCitations: (citations) => {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMsgId ? { ...msg, citations } : msg
-          )
-        );
+      onCitations: () => {
+        // Citations disabled per user preference
       },
       onDone: () => {
         setIsStreaming(false);
@@ -565,7 +549,13 @@ export function Chat({
                 )}
 
                 {/* Message Body */}
-                <div className="whitespace-pre-wrap leading-relaxed">
+                <div
+                  className={`whitespace-pre-wrap leading-relaxed ${
+                    msg.role === "user"
+                      ? "max-h-28 overflow-y-auto pr-1 text-xs sm:text-sm scrollbar-thin"
+                      : ""
+                  }`}
+                >
                   {escapeHtml(msg.content)}
                 </div>
 
@@ -840,52 +830,6 @@ export function Chat({
           </form>
         </div>
       </div>
-
-      {/* Popup Citation Inspector Modal (Zero Side-Panel Clutter) */}
-      <Dialog open={Boolean(selectedCitation)} onOpenChange={(open) => !open && setSelectedCitation(null)}>
-        <DialogContent className="sm:max-w-lg bg-white/95 dark:bg-[#141826]/95 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white backdrop-blur-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
-              <FileText className="h-4 w-4 text-primary" />
-              <span>Citation Inspector</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              {selectedCitation?.title} (ID: {selectedCitation?.document_id})
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedCitation && (
-            <div className="space-y-3 py-2 text-xs">
-              <div className="p-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 italic text-slate-700 dark:text-white/80 leading-relaxed">
-                "{selectedCitation.snippet}"
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Reranker Relevance:</span>
-                <Badge variant="success">
-                  {(selectedCitation.score * 100).toFixed(1)}% match
-                </Badge>
-              </div>
-              <div className="rounded-lg bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 p-2.5 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                <Shield className="h-4 w-4 shrink-0" />
-                <span>Sovereign policy check passed</span>
-              </div>
-              {selectedCitation.uri && (
-                <div className="pt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full gap-1.5 text-xs"
-                    onClick={() => window.open(selectedCitation.uri, "_blank")}
-                  >
-                    Open Resource
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
