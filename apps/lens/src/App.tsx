@@ -5,21 +5,20 @@ import { Datasets } from "@/components/Datasets";
 import { Notes } from "@/components/Notes";
 import { KnowledgeGraph } from "@/components/graph/KnowledgeGraph";
 import { Memory } from "@/components/Memory";
+import { LegalChamber } from "@/components/legal/LegalChamber";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ResourcePicker } from "@/components/ResourcePicker";
 import {
   MessageSquare,
   Share2,
-  FolderPlus,
   Database,
   BookOpen,
-  Terminal,
   GitBranch,
   Brain,
+  Scale,
   ArrowLeft,
   X,
   PanelLeft,
-  ChevronRight,
   Sun,
   Moon,
   Search,
@@ -30,6 +29,7 @@ import {
 
 type ActiveTab =
   | "chat"
+  | "legal"
   | "connectors"
   | "datasets"
   | "notes"
@@ -45,8 +45,14 @@ interface NavItem {
 
 const SIDEBAR_SECTIONS: { title: string; items: NavItem[] }[] = [
   {
-    title: "Core",
+    title: "Legal Chamber",
     items: [
+      {
+        id: "legal",
+        label: "Legal Chamber",
+        icon: Scale,
+        description: "Indian Law Multi-Agent Case Audit & Weakness Hunter",
+      },
       {
         id: "chat",
         label: "AI Chat",
@@ -93,6 +99,7 @@ const SIDEBAR_SECTIONS: { title: string; items: NavItem[] }[] = [
 ];
 
 const TAB_LABELS: Record<ActiveTab, string> = {
+  legal: "Legal Chamber",
   chat: "Chat",
   connectors: "Local Sources",
   datasets: "Datasets",
@@ -160,7 +167,7 @@ const FAQ_ITEMS: FAQItem[] = [
 ];
 
 export function App() {
-  const [activeTab, setActiveTab] = React.useState<ActiveTab>("chat");
+  const [activeTab, setActiveTab] = React.useState<ActiveTab>("legal");
   const [isDockExpanded, setIsDockExpanded] = React.useState(false);
   const [currentTenantId] = React.useState("corp-default");
   const [currentUserId] = React.useState("alice");
@@ -578,6 +585,11 @@ export function App() {
 
         {/* ─── Main Content Canvas (Fully Scrollable on All Features) ─── */}
         <main className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+          {/* Legal Chamber Feature View */}
+          <div className={activeTab === "legal" ? "flex-1 flex flex-col min-h-0 h-full" : "hidden"}>
+            <LegalChamber />
+          </div>
+
           {/* Chat Feature View */}
           <div className={activeTab === "chat" ? "flex-1 flex flex-col min-h-0" : "hidden"}>
             <Chat

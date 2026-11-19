@@ -1303,3 +1303,195 @@ export async function getMemoryAudit(memoryId: string): Promise<MemoryAuditEvent
   return res.json() as Promise<MemoryAuditEvent[]>;
 }
 
+// ============================================================================
+// Legal Intelligence Multi-Agent Chamber API
+// ============================================================================
+
+export interface LegalCaseInput {
+  case_title: string;
+  case_text: string;
+  case_type: string;
+  court_forum: string;
+  client_posture: string;
+  specific_questions?: string[];
+}
+
+export interface ExtractedFacts {
+  case_title: string;
+  court_forum: string;
+  parties: Record<string, string>;
+  key_statutes: string[];
+  chronological_events: { date: string; event: string }[];
+  undisputed_facts: string[];
+  disputed_contentions: string[];
+  core_legal_issues: string[];
+}
+
+export interface WeaknessItem {
+  id: string;
+  severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW";
+  category: string;
+  title: string;
+  description: string;
+  statutory_basis: string;
+  impact_on_case: string;
+  opposing_counsel_angle: string;
+}
+
+export interface StrategyItem {
+  id: string;
+  phase: string;
+  remedy_title: string;
+  procedural_mechanism: string;
+  strategic_rationale: string;
+  actionable_steps: string[];
+  key_cross_examination_questions: string[];
+}
+
+export interface PrecedentItem {
+  case_name: string;
+  citation: string;
+  court: string;
+  applicable_ratio: string;
+  relevance_summary: string;
+  stance: "SUPPORTING" | "DISTINGUISHING_ADVERSE_AUTHORITY";
+}
+
+export interface LegalAuditReport {
+  case_id: string;
+  case_title: string;
+  case_type: string;
+  overall_strength_score: number;
+  risk_level: "CRITICAL_RISK" | "HIGH_RISK" | "MODERATE_RISK" | "STRONG_POSITION";
+  executive_summary: string;
+  facts: ExtractedFacts;
+  weaknesses: WeaknessItem[];
+  strategic_approach: StrategyItem[];
+  precedents: PrecedentItem[];
+  full_legal_opinion: string;
+  deliberation_log: { agent: string; status: string; summary: string }[];
+}
+
+export interface CaseUploadResponse {
+  filename: string;
+  title: string;
+  pages_count: number;
+  character_count: number;
+  word_count: number;
+  extracted_text: string;
+}
+
+export interface SampleCase {
+  id: string;
+  title: string;
+  case_type: string;
+  court_forum: string;
+  client_posture: string;
+  text: string;
+}
+
+export async function uploadCaseFile(file: File): Promise<CaseUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/legal/upload-case`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Upload failed" }));
+    throw new Error(err.detail || `Upload failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function analyzeCase(input: LegalCaseInput): Promise<LegalAuditReport> {
+  const res = await fetch(`${API_BASE}/legal/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Analysis failed" }));
+    throw new Error(err.detail || `Analysis failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function getLegalPrecedents(query?: string): Promise<{ total: number; precedents: any[] }> {
+  const url = query
+    ? `${API_BASE}/legal/precedents?query=${encodeURIComponent(query)}`
+    : `${API_BASE}/legal/precedents`;
+  const res = await fetch(url);
+  if (!res.ok) return { total: 0, precedents: [] };
+  return res.json();
+}
+
+export async function getLegalSampleCases(): Promise<SampleCase[]> {
+  try {
+    const res = await fetch(`${API_BASE}/legal/sample-cases`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export function streamLegalAnalysis(
+  input: LegalCaseInput,
+  onEvent: (event: any) => void,
+  onDone: () => void,
+  onError: (err: Error) => void
+): () => void {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/legal/analyze-stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const block of lines) {
+          const dataMatch = block.match(/data:\s*(.+)/);
+          if (dataMatch && dataMatch[1]) {
+            try {
+              const parsed = JSON.parse(dataMatch[1]);
+              onEvent(parsed);
+              if (parsed.type === "final_report") {
+                onDone();
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
+        }
+      }
+      onDone();
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        onError(err);
+      }
+    }
+  })();
+
+  return () => controller.abort();
+}
+

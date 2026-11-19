@@ -46,12 +46,10 @@ import {
   Maximize2,
   Minimize2,
   Columns,
-  Crop,
   PanelLeftClose,
   PanelLeft,
   Trash2,
 } from "lucide-react";
-import { format12HrDateTime } from "@/lib/utils";
 
 interface NotesProps {
   currentUserId?: string;

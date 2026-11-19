@@ -1,12 +1,11 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   Network,
   Shield,
   Search,
-  Database,
   Cpu,
   CheckCircle2,
   Layers,
@@ -193,7 +192,7 @@ const RAG_PIPELINE_NODES: RagNode[] = [
 ];
 
 export function KnowledgeGraph() {
-  const [selectedNode, setSelectedNode] = React.useState<RagNode>(RAG_PIPELINE_NODES[0]);
+  const [selectedNode, setSelectedNode] = React.useState<RagNode>(RAG_PIPELINE_NODES[0]!);
 
 
   const renderIcon = (name: RagNode["iconName"], color: string) => {
@@ -247,7 +246,7 @@ export function KnowledgeGraph() {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setSelectedNode(RAG_PIPELINE_NODES[0])}
+            onClick={() => setSelectedNode(RAG_PIPELINE_NODES[0]!)}
             className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
             title="Inspect first stage"
           >

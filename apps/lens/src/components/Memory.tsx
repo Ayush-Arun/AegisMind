@@ -4,8 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
-  CardHeader,
-  CardTitle,
   CardContent,
 } from "@/components/ui/card";
 import {
@@ -16,7 +14,6 @@ import {
   Loader2,
   Check,
   X,
-  Shield,
   ChevronDown,
   ChevronRight,
   Sparkles,
@@ -28,9 +25,6 @@ import {
   Send,
   Bot,
   User,
-  ExternalLink,
-  Layers,
-  CheckCircle2,
 } from "lucide-react";
 import {
   listMemoryRecords,
@@ -51,7 +45,6 @@ import {
   recordExchange,
   subscribeToStore,
   type ConvThread,
-  type ConvMessage,
 } from "@/lib/conversationStore";
 
 interface MemoryProps {
@@ -356,7 +349,7 @@ function ConversationCard({
 }
 
 /* ---- Main Memory Component ---- */
-export function Memory({ currentUserId, currentTenantId, onNavigateToChat }: MemoryProps) {
+export function Memory({ currentUserId, currentTenantId, onNavigateToChat: _onNavigateToChat }: MemoryProps) {
   const [mainTab, setMainTab] = React.useState<MainViewTab>("conversations");
   const [conversations, setConversations] = React.useState<ConvThread[]>([]);
   const [records, setRecords] = React.useState<MemoryRecord[]>([]);

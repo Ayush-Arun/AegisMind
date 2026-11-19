@@ -9,7 +9,6 @@ import {
   BookOpen,
   GitBranch,
   Brain,
-  Terminal,
   Search,
 } from "lucide-react";
 

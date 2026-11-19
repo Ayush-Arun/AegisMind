@@ -160,6 +160,14 @@ def create_app(state: CoreState | None = None) -> FastAPI:
     api_router = create_routes(app_state)
     app.include_router(api_router)
 
+    # Include Legal Intelligence Swarm router
+    try:
+        from aegismind_core.legal.routes import legal_router
+        app.include_router(legal_router)
+        logger.info("Mounted Legal Intelligence Multi-Agent routes at /api/v1/legal")
+    except Exception as exc:
+        logger.warning("Could not mount legal routes: %s", exc)
+
     # Mount direct /api/local-tools alias routes
     local_tools_router = APIRouter(prefix="/api/local-tools", tags=["agent"])
 

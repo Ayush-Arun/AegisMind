@@ -38,6 +38,7 @@ node_modules/
 .npm/
 .output/
 .wxt/
+*.tsbuildinfo
 
 # IDE and operating system
 .idea/
