@@ -112,6 +112,63 @@ class LegalSwarmOrchestrator:
     def __init__(self, llm: OllamaAdapter | None = None) -> None:
         self.llm = llm or OllamaAdapter()
 
+    async def _call_llm_stream(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 700,
+        model: str = "qwen3.5:9b",
+    ) -> AsyncIterator[str]:
+        """Stream response tokens from Ollama with zero thinking overhead and GPU acceleration."""
+        formatted_prompt = (
+            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>assistant\n<think>\n</think>\n"
+        )
+        base_url = await self.llm._resolve_base_url()
+        try:
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{base_url}/api/generate",
+                    json={
+                        "model": model,
+                        "prompt": formatted_prompt,
+                        "raw": True,
+                        "options": {
+                            "num_gpu": 24,
+                            "num_predict": max_tokens,
+                            "temperature": 0.1,
+                        },
+                        "stream": True,
+                    },
+                ) as resp:
+                    if resp.status_code == 200:
+                        async for line in resp.aiter_lines():
+                            if not line:
+                                continue
+                            try:
+                                chunk = json.loads(line)
+                                tok = chunk.get("response", "")
+                                if tok:
+                                    yield tok
+                                if chunk.get("done", False):
+                                    break
+                            except Exception:
+                                continue
+                        return
+        except Exception as exc:
+            log.warning("Streaming with raw prompt failed, falling back: %s", exc)
+
+        async for chunk in self.llm.stream_generate(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            temperature=0.1,
+            model=model,
+            max_tokens=max_tokens,
+        ):
+            yield chunk
+
     async def _call_llm(self, system_prompt: str, user_prompt: str, max_tokens: int = 800, model: str = "qwen3.5:9b") -> str:
         """Call Ollama with zero thinking overhead and GPU acceleration."""
         formatted_prompt = (
@@ -129,7 +186,7 @@ class LegalSwarmOrchestrator:
                         "prompt": formatted_prompt,
                         "raw": True,
                         "options": {
-                            "num_gpu": 26,
+                            "num_gpu": 24,
                             "num_predict": max_tokens,
                             "temperature": 0.1,
                         },
@@ -373,3 +430,70 @@ CASE DOSSIER / PLEADING TEXT:
         output_parts.append("\n".join(battle_plan_parts))
 
         return "\n".join(output_parts)
+
+    async def stream_analyze_case_grounded(
+        self,
+        case_text: str,
+        user_instruction: str = "",
+        posture: str = "Defense / Accused",
+        branch: str = "Criminal Law",
+        forum: str = "Trial Court / High Court",
+        model: str = "qwen3.5:9b",
+    ) -> AsyncIterator[str]:
+        """Stream real-time legal response tokens from GPU with zero thinking overhead."""
+        trimmed = case_text.strip()
+        if len(trimmed) < 40 or trimmed.lower() in ["asdf", "test", "hello", "abc", "xyz"]:
+            yield (
+                "⚠️ **Insufficient Case Details**\n\n"
+                "Please provide the actual case pleadings, FIR, chargesheet, petition, or factual brief. "
+                f"The text provided (`{trimmed[:40]}`) is insufficient to formulate a defense strategy."
+            )
+            return
+
+        t_low = trimmed.lower()
+        is_ndps = any(k in t_low for k in ["ndps", "narcotic", "heroin", "ganja", "contraband", "malkhana", "section 21", "section 29", "section 52a", "section 50"])
+        is_cyber_bank = any(k in t_low for k in ["bank", "maker-checker", "server log", "cctv", "dormant", "it act", "section 66", "internal audit"])
+        is_ni_act = any(k in t_low for k in ["138", "cheque", "dishonour", "negotiable instruments", "quashing", "section 482", "mgi developers"])
+        is_civil_property = any(k in t_low for k in ["specific performance", "agreement to sell", "immovable property", "readiness and willingness", "suit for", "injunction", "title deed", "possession", "civil suit"])
+
+        specialized_rules = ""
+        if is_ndps:
+            branch = "NDPS Act / Criminal Law"
+            specialized_rules = "MANDATORY NDPS RULES: Section 52A Magistrate sampling certification delay; Section 50 limited application to personal body/pocket search; Section 43 public place search; Section 67 confession bar; personal locker chain of custody; hostile & stock witnesses; Section 37 bail."
+        elif is_cyber_bank:
+            branch = "Criminal Fraud & Electronic Evidence"
+            specialized_rules = "MANDATORY BSA/IEA RULES: Section 63(4) BSA / 65B mandatory certificate by extraction officer; internal audit author examination; maker-checker shared credentials; CCTV timestamp alibi; Section 105 BNSS audio-video search recording."
+        elif is_ni_act:
+            branch = "Negotiable Instruments Act / Criminal Law"
+            specialized_rules = "MANDATORY NI ACT RULES: Section 138(b) 30-day notice limit from return memo; Section 141 specific averments for directors/partners; Section 482 CrPC bar on threshold mini-trial; Section 139 presumption rebuttable on preponderance of probabilities."
+        elif is_civil_property:
+            branch = "Civil Law (Specific Performance & Property)"
+            specialized_rules = "MANDATORY CIVIL PROPERTY RULES: Section 16(c) Specific Relief Act mandatory continuous readiness & willingness from agreement to decree; Article 54 Limitation Act 3-year bar from fixed date or refusal; Section 17(1A) Registration Act mandatory registration for part performance possession; Section 20 Specific Relief Act equitable discretion & hardship."
+
+        instruction_focus = (
+            f"Specific User Request: '{user_instruction}'\nDirectly answer this exact request with practical courtroom execution advice."
+            if user_instruction
+            else "Identify every fatal evidentiary loophole, statutory defect, and formulate a concrete courtroom battle plan."
+        )
+
+        system_instruction = f"""You are an elite Indian trial advocate and legal strategist advising the {posture} in a {branch} matter before {forum}.
+Analyze the case record with absolute statutory precision using Indian law (BNS/BNSS/BSA, IPC/CrPC/IEA, NI Act, Specific Relief Act, Limitation Act, Registration Act).
+{specialized_rules}
+
+TASK:
+{instruction_focus}
+
+GUIDELINES:
+1. Ground every finding in the provided record. Quote key lines, dates, amounts, and provisions.
+2. Structure your response with bold Markdown headings.
+3. Be sharp, aggressive, practical, and direct. No citation popup metadata, no boilerplate disclaimers, no filler."""
+
+        user_prompt = f"CASE RECORD / PLEADINGS:\n{trimmed[:6500]}"
+
+        async for chunk in self._call_llm_stream(
+            system_prompt=system_instruction,
+            user_prompt=user_prompt,
+            max_tokens=700,
+            model=model,
+        ):
+            yield chunk

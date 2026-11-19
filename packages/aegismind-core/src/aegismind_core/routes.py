@@ -697,24 +697,20 @@ def create_routes(state: CoreState) -> APIRouter:
                 yield "event: thinking\ndata: Preparing legal analysis and battle strategy...\n\n"
 
                 orchestrator = LegalSwarmOrchestrator()
+                effective_model = model or "qwen3.5:9b"
                 try:
-                    legal_res = await orchestrator.analyze_case_grounded(
+                    async for token in orchestrator.stream_analyze_case_grounded(
                         case_text=doc_text,
                         user_instruction=user_instruction,
                         posture=posture,
                         branch=branch,
                         forum=forum,
-                    )
+                        model=effective_model,
+                    ):
+                        yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
                 except Exception as exc:
-                    logger.error("Legal grounded analysis failed: %s", exc)
-                    legal_res = f"⚠️ Analysis failed: {exc}. Please verify Ollama is running with model 'qwen3.5:9b'."
-
-                words = legal_res.split(" ")
-                for i, word in enumerate(words):
-                    token = word if i == 0 else " " + word
-                    yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
-                    if i % 4 == 0:
-                        await asyncio.sleep(0.005)
+                    logger.error("Legal streaming analysis failed: %s", exc)
+                    yield f"event: token\ndata: {json.dumps({'token': f'⚠️ Analysis failed: {exc}. Please verify Ollama is running.'})}\n\n"
 
                 # No citations shown per user specification
                 yield f"event: citations\ndata: []\n\n"
