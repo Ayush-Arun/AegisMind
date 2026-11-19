@@ -154,6 +154,26 @@ class SearchApiRequest(BaseModel):
     )
 
 
+class ChatStreamRequest(BaseModel):
+    """Payload for streaming chat answers via POST."""
+
+    model_config = ConfigDict(frozen=True)
+
+    query: str = Field(..., description="User query for chat session")
+    principal_id: str = Field(default="anonymous", description="Principal ID")
+    user_id: str | None = Field(default=None, description="Alias for principal_id")
+    tenant_id: str | None = Field(default=None, description="Tenant ID")
+    model: str | None = Field(default=None, description="Ollama model for answer generation")
+    top_k: int = Field(default=5, ge=1, le=20)
+    sources: str | None = Field(
+        default=None, description="Comma-separated source filter: local,github,gmail"
+    )
+    namespace: str = Field(default="global", description="Memory namespace for this conversation")
+    private_mode: bool = Field(
+        default=False, description="If true, skip memory retrieval and extraction"
+    )
+
+
 class GroupAliasRequest(BaseModel):
     """Payload for mapping IdP group to canonical group."""
 
@@ -563,23 +583,17 @@ def create_routes(state: CoreState) -> APIRouter:
                 detail=f"Search failed: {exc}",
             ) from exc
 
-    # 2. GET /api/v1/chat: Server-Sent Events (SSE) streaming answers with citations
-    @router.get("/chat")
-    @router.get("/chat/stream")
-    async def chat_sse(
-        query: str = Query(..., description="User query for chat session"),
-        principal_id: str = Query("anonymous", description="Principal ID"),
-        user_id: str | None = Query(None, description="Alias for principal_id"),
-        tenant_id: str | None = Query(None, description="Tenant ID"),
-        model: str | None = Query(None, description="Ollama model for answer generation"),
-        top_k: int = Query(5, ge=1, le=20),
-        sources: str | None = Query(
-            None, description="Comma-separated source filter: local,github,gmail"
-        ),
-        namespace: str = Query("global", description="Memory namespace for this conversation"),
-        private_mode: bool = Query(
-            False, description="If true, skip memory retrieval and extraction"
-        ),
+    # 2. GET & POST /api/v1/chat: Server-Sent Events (SSE) streaming answers with citations
+    async def _execute_chat_stream(
+        query: str,
+        principal_id: str = "anonymous",
+        user_id: str | None = None,
+        tenant_id: str | None = None,
+        model: str | None = None,
+        top_k: int = 5,
+        sources: str | None = None,
+        namespace: str = "global",
+        private_mode: bool = False,
     ) -> StreamingResponse:
         pipeline = state.retrieval_pipeline
         if pipeline is None:
@@ -655,18 +669,38 @@ def create_routes(state: CoreState) -> APIRouter:
                 if m_forum:
                     forum = m_forum.group(1).strip()
 
+                user_instruction = ""
+                doc_text = query
+
+                if "--- attached file:" in q_lower:
+                    parts = re.split(r"--- Attached File:\s*[^\n]+---", query, flags=re.I)
+                    if len(parts) >= 2:
+                        doc_text = parts[1].strip()
+                        tail_match = re.search(r"\n\n([^\n].*)$", doc_text, re.DOTALL)
+                        if tail_match and len(tail_match.group(1).strip()) < 400:
+                            user_instruction = tail_match.group(1).strip()
+                            doc_text = doc_text[:tail_match.start()].strip()
+                        if parts[0].strip():
+                            user_instruction = (parts[0].strip() + " " + user_instruction).strip()
+
+                if not user_instruction:
+                    lines = [l.strip() for l in query.split("\n") if l.strip()]
+                    if lines and len(lines[-1]) < 200 and not lines[-1].startswith(("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "CHARGES", "IN THE")):
+                        user_instruction = lines[-1]
+
                 yield "event: thinking\ndata: Reading case record & extracting factual matrix...\n\n"
                 await asyncio.sleep(0.04)
                 yield "event: thinking\ndata: Auditing statutory compliance & evidentiary defects...\n\n"
                 await asyncio.sleep(0.04)
                 yield "event: thinking\ndata: Verifying verbatim quotes against record...\n\n"
                 await asyncio.sleep(0.04)
-                yield "event: thinking\ndata: Preparing defence strategy and cross-examination questions...\n\n"
+                yield "event: thinking\ndata: Preparing legal analysis and battle strategy...\n\n"
 
                 orchestrator = LegalSwarmOrchestrator()
                 try:
                     legal_res = await orchestrator.analyze_case_grounded(
-                        case_text=query,
+                        case_text=doc_text,
+                        user_instruction=user_instruction,
                         posture=posture,
                         branch=branch,
                         forum=forum,
@@ -885,6 +919,50 @@ def create_routes(state: CoreState) -> APIRouter:
             yield f"event: done\ndata: {done_payload}\n\n"
 
         return StreamingResponse(sse_event_stream(), media_type="text/event-stream")
+
+    @router.get("/chat")
+    @router.get("/chat/stream")
+    async def chat_sse_get(
+        query: str = Query(..., description="User query for chat session"),
+        principal_id: str = Query("anonymous", description="Principal ID"),
+        user_id: str | None = Query(None, description="Alias for principal_id"),
+        tenant_id: str | None = Query(None, description="Tenant ID"),
+        model: str | None = Query(None, description="Ollama model for answer generation"),
+        top_k: int = Query(5, ge=1, le=20),
+        sources: str | None = Query(
+            None, description="Comma-separated source filter: local,github,gmail"
+        ),
+        namespace: str = Query("global", description="Memory namespace for this conversation"),
+        private_mode: bool = Query(
+            False, description="If true, skip memory retrieval and extraction"
+        ),
+    ) -> StreamingResponse:
+        return await _execute_chat_stream(
+            query=query,
+            principal_id=principal_id,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            model=model,
+            top_k=top_k,
+            sources=sources,
+            namespace=namespace,
+            private_mode=private_mode,
+        )
+
+    @router.post("/chat")
+    @router.post("/chat/stream")
+    async def chat_sse_post(req: ChatStreamRequest) -> StreamingResponse:
+        return await _execute_chat_stream(
+            query=req.query,
+            principal_id=req.principal_id,
+            user_id=req.user_id,
+            tenant_id=req.tenant_id,
+            model=req.model,
+            top_k=req.top_k,
+            sources=req.sources,
+            namespace=req.namespace,
+            private_mode=req.private_mode,
+        )
 
     # 4. GET /api/v1/memory/stats: Memory statistics
     @router.get("/memory/stats")

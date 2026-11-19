@@ -178,17 +178,19 @@ class LegalSwarmOrchestrator:
     async def run_audit(
         self,
         text: str,
+        user_instruction: str = "",
         posture: str = "Defense / Accused",
         branch: str = "Criminal Law",
         forum: str = "Trial Court / High Court",
     ) -> dict[str, Any]:
         """Step 1 & 2: Structured grounded audit. Strictly reads ONLY provided text."""
-        log.warning("INPUT len=%d first200=%r", len(text), text[:200])
+        log.warning("INPUT len=%d instruction=%r first200=%r", len(text), user_instruction, text[:200])
 
         # Dynamic branch detection
         t_low = text.lower()
         is_ndps = any(k in t_low for k in ["ndps", "narcotic", "heroin", "ganja", "contraband", "malkhana", "section 21", "section 29", "section 52a", "section 50"])
         is_cyber_bank = any(k in t_low for k in ["bank", "maker-checker", "server log", "cctv", "dormant", "it act", "section 66", "internal audit"])
+        is_ni_act = any(k in t_low for k in ["138", "cheque", "dishonour", "negotiable instruments", "quashing", "section 482", "mgi developers"])
 
         specialized_instructions = ""
         if is_ndps:
@@ -214,11 +216,21 @@ SPECIALIZED CRIMINAL FRAUD & ELECTRONIC EVIDENCE RULES:
 6. Circumstantial evidence: Where no direct eyewitness exists, circumstantial chain must be complete (Sharad Birdhichand Sarda). Hostile KYC links and absconding co-beneficiaries break the chain.
 7. Distractor: Private banks do NOT require prior government sanction (Section 197 CrPC / Section 218 BNSS). Do NOT raise sanction.
 """
+        elif is_ni_act:
+            specialized_instructions = """
+SPECIALIZED NI ACT & SECTION 482 LITIGATION RULES:
+1. Section 138(b) NI Act: Demand notice MUST be dispatched within 30 days of receiving the cheque return memo. Notice issued beyond 30 days is a complete statutory bar.
+2. Section 138(c) & Section 142(1)(b) NI Act: Cause of action arises only after 15 days of notice receipt. Complaint must be filed within 1 month thereafter. Premature or delayed filing without condonation of delay is invalid.
+3. Section 141 NI Act (Vicarious liability): Specific averments showing individual was in charge of day-to-day business at the time of the offence are mandatory (SMS Pharmaceuticals). Mere title without specific role warrants quashing.
+4. Section 482 CrPC (Quashing): High Court cannot conduct a mini-trial on disputed defense evidence at threshold, but must quash if undisputed record demonstrates abuse of process or lack of underlying legally enforceable debt.
+5. Section 139 NI Act presumption: Rebuttable by preponderance of probabilities on the complainant's own admissions without accused entering the witness box (Rangappa v. Sri Mohan).
+"""
 
         system_instruction = f"""You are an elite Indian trial advocate and criminal defense counsel. You act for the {posture} in a
 {branch} matter before {forum}. Use BNS/BNSS/BSA for post-July-2024 matters, and IPC/CrPC/IEA/NDPS/IT/NI Act where applicable.
 {specialized_instructions}
 CRITICAL RULES:
+- Address the user's specific inquiry directly. If the user asks to explain or summarize, provide a rich, coherent breakdown of the parties, dispute, facts, legal controversy, weaknesses, and defense perspective.
 - Never raise civil doctrines (limitation, non-joinder of parties, statutory notice) in criminal matters.
 - Every weakness MUST cite a paragraph reference (para_ref) AND an EXACT verbatim quote from the text.
 - Do not invent facts, sections, dates, weights, or case names. Include the other side's real strengths.
@@ -232,27 +244,31 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
       "severity": "HIGH",
       "para_ref": "para number from text",
       "quote": "verbatim quote directly from text",
-      "statute": "specific Indian statute section e.g. NDPS Act s.52A, BSA s.63(4), BNSS s.105",
+      "statute": "specific Indian statute section e.g. NDPS Act s.52A, BSA s.63(4), BNSS s.105, NI Act s.138",
       "why_it_matters": "Why this fatal flaw destroys the case against client",
       "opposing_counter": "Anticipated argument of prosecution",
-      "procedural_motion": "Exact motion to file (e.g. S.52A challenge, S.63(4) BSA objection, Discharge, Bail)",
+      "procedural_motion": "Exact motion to file (e.g. S.52A challenge, S.63(4) BSA objection, Discharge, Quashing u/s 482, Bail)",
       "courtroom_stage": "Trial stage (e.g. Bail, Framing of Charges, S.294 CrPC, Final Arguments)"
     }}
   ],
   "defense_strategy": "Central trial narrative and tactical theory of defense",
   "cross_examination": [
     {{
-      "witness": "Specific named prosecution witness (e.g. PW-1, PW-2, PW-3, IO)",
+      "witness": "Specific named prosecution witness (e.g. PW-1, PW-2, Complainant, IO)",
       "trap_questions": ["Pointed question 1 to extract fatal admission", "Pointed question 2", "Pointed question 3"]
     }}
   ],
-  "facts_summary": "1-2 concise sentences summarizing the core charge and situation",
+  "facts_summary": "In-depth summary of parties, background facts, and current status of dispute",
   "issues": ["Core issue 1", "Core issue 2"],
   "other_side_strengths": ["Real exhibits or claims favoring opponent"],
   "unclear_or_missing": ["Vital missing documentation or unexplained gaps"]
 }}
 """
-        user_prompt = f"CASE DOSSIER / PLEADING TEXT:\n{text[:6000]}"
+        user_prompt = f"""SPECIFIC USER INQUIRY:
+{user_instruction if user_instruction else "Analyze this matter, identify evidentiary defects and formulate practical defense strategy under Indian law."}
+
+CASE DOSSIER / PLEADING TEXT:
+{text[:6500]}"""
 
         try:
             raw_output = await self._call_llm(system_instruction, user_prompt, max_tokens=1800)
@@ -265,6 +281,7 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
     async def analyze_case_grounded(
         self,
         case_text: str,
+        user_instruction: str = "",
         posture: str = "Defense / Accused",
         branch: str = "Criminal Law",
         forum: str = "High Court / Trial Court",
@@ -281,7 +298,13 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
             )
 
         # Step 2: Single-Pass Structured Audit on GPU
-        audit = await self.run_audit(trimmed, posture, branch, forum)
+        audit = await self.run_audit(
+            text=trimmed,
+            user_instruction=user_instruction,
+            posture=posture,
+            branch=branch,
+            forum=forum,
+        )
 
         # Step 3: Verify quotes and drop hallucinated findings
         raw_weaknesses = audit.get("weaknesses", [])
@@ -301,12 +324,15 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
             defense_posture = "VULNERABLE POSITION (Documentary chain of custody largely intact; settlement or early mitigation advised)"
 
         # Step 5: Format Final Output
+        is_explain_query = any(k in user_instruction.lower() for k in ["explain", "summarize", "summary", "overview", "what is this", "tell me about"])
+        title_heading = "# 📄 Case Record Analysis & Legal Explanation\n" if is_explain_query else "# ⚖️ Legal Defense Analysis & Strategy Assessment\n"
+
         output_parts: list[str] = [
-            f"# ⚖️ Legal Defense Analysis & Strategy Assessment\n",
+            title_heading,
             f"**Evaluation Posture**: {posture} | **Jurisdiction**: Indian Law | **Defense Position**: **{defense_posture}**\n",
             f"## 1. Case Factual Matrix",
             f"{audit.get('facts_summary', 'Facts extracted from case dossier.')}\n",
-            f"**Core Legal Issues**:\n" + "\n".join(f"- {issue}" for issue in audit.get("issues", ["Sufficiency of prima facie evidence"])),
+            f"**Core Legal Issues & Statutory Provisions**:\n" + "\n".join(f"- {issue}" for issue in audit.get("issues", ["Sufficiency of prima facie evidence"])),
             f"\n## 2. Verified Vulnerabilities & Evidentiary Flaws ({len(good_weaknesses)} Found)",
         ]
 

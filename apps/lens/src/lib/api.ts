@@ -352,79 +352,102 @@ export function streamChat(params: {
   onDone: () => void;
   onError: (err: Error) => void;
 }): () => void {
-  const url = new URL(`${window.location.origin}${API_BASE}/chat`);
-  url.searchParams.set("query", params.query);
-  url.searchParams.set("tenant_id", params.tenant_id);
-  url.searchParams.set("user_id", params.user_id);
-  url.searchParams.set("principal_id", params.user_id);
-  if (params.model) {
-    url.searchParams.set("model", params.model);
-  }
-  if (params.sources && params.sources.length > 0) {
-    url.searchParams.set("sources", params.sources.join(","));
-  }
+  const controller = new AbortController();
 
-  const eventSource = new EventSource(url.toString());
-  const accumulatedCitations: Citation[] = [];
-
-  eventSource.addEventListener("token", (event) => {
+  (async () => {
     try {
-      const parsed = JSON.parse(event.data);
-      if (typeof parsed === "object" && parsed !== null && "token" in parsed) {
-        params.onToken(String(parsed.token));
-      } else {
-        params.onToken(event.data);
+      const response = await fetch(`${API_BASE}/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: params.query,
+          tenant_id: params.tenant_id,
+          user_id: params.user_id,
+          principal_id: params.user_id,
+          model: params.model,
+          sources: params.sources?.join(","),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        params.onError(new Error(`Server error ${response.status}: ${errText}`));
+        return;
       }
-    } catch {
-      params.onToken(event.data);
-    }
-  });
 
-  eventSource.addEventListener("thinking", (event) => {
-    params.onThinking(event.data);
-  });
-
-  eventSource.addEventListener("citation", (event) => {
-    try {
-      const citation = JSON.parse(event.data);
-      if (citation && !accumulatedCitations.some((c) => c.chunk_id === citation.chunk_id)) {
-        accumulatedCitations.push(citation);
-        params.onCitations([...accumulatedCitations]);
+      if (!response.body) {
+        params.onDone();
+        return;
       }
-    } catch {
-      // ignore parse error
-    }
-  });
 
-  eventSource.addEventListener("citations", (event) => {
-    try {
-      const citations = JSON.parse(event.data);
-      if (Array.isArray(citations)) {
-        for (const c of citations) {
-          if (!accumulatedCitations.some((item) => item.chunk_id === c.chunk_id)) {
-            accumulatedCitations.push(c);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+
+        for (const part of parts) {
+          if (!part.trim()) continue;
+          const lines = part.split("\n");
+          let eventType = "message";
+          let dataStr = "";
+
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              dataStr = line.slice(6);
+            }
+          }
+
+          if (eventType === "thinking") {
+            params.onThinking(dataStr);
+          } else if (eventType === "token") {
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (typeof parsed === "object" && parsed !== null && "token" in parsed) {
+                params.onToken(String(parsed.token));
+              } else {
+                params.onToken(dataStr);
+              }
+            } catch {
+              params.onToken(dataStr);
+            }
+          } else if (eventType === "citations") {
+            try {
+              const citations = JSON.parse(dataStr);
+              if (Array.isArray(citations)) {
+                params.onCitations(citations);
+              }
+            } catch {
+              // ignore
+            }
+          } else if (eventType === "done") {
+            params.onDone();
+            return;
           }
         }
-        params.onCitations([...accumulatedCitations]);
       }
-    } catch {
-      // ignore parse error
+      params.onDone();
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        return;
+      }
+      params.onError(err instanceof Error ? err : new Error(String(err)));
     }
-  });
-
-  eventSource.addEventListener("done", () => {
-    params.onDone();
-    eventSource.close();
-  });
-
-  eventSource.onerror = (_err) => {
-    // If connection drops or offline fallback is active, generate contextual answers
-    eventSource.close();
-    simulateChatStream(params);
-  };
+  })();
 
   return () => {
-    eventSource.close();
+    controller.abort();
   };
 }
 
@@ -604,116 +627,6 @@ export async function createVaultNote(params: {
     throw new Error(`Save note failed: ${response.statusText} (${errText})`);
   }
   return response.json();
-}
-
-function simulateChatStream(params: {
-  query: string;
-  user_id?: string;
-  onToken: (token: string) => void;
-  onThinking: (status: string) => void;
-  onCitations: (citations: Citation[]) => void;
-  onDone: () => void;
-  onError: (err: Error) => void;
-}) {
-  const q = params.query.toLowerCase();
-  params.onThinking("Querying vector store with coarse tenant filter...");
-  setTimeout(() => {
-    params.onThinking("Evaluating sovereign access policies via local policy bulk check...");
-    setTimeout(() => {
-      params.onThinking("Applying cross-encoder reranker and synthesizing response...");
-
-      let responseText = "";
-      let mockCitations: Citation[] = [];
-
-      if (q.includes("stale") || q.includes("revocation") || q.includes("sec-892")) {
-        mockCitations = [
-          {
-            chunk_id: "chk-jira-sec-892",
-            document_id: "doc-sec-02",
-            title: "SEC-892: Zero Stale Read Revocation Policy",
-            uri: "https://jira.corp.internal/browse/SEC-892",
-            snippet: "Revocation of viewer access invalidates authorization cache immediately without stale window using sovereign policy verification.",
-            score: 0.96,
-          },
-        ];
-        responseText = `Under SEC-892, AegisMind guarantees a zero stale read window for permission revocations. When a viewer relationship or access policy is revoked sovereignly, all subsequent read and search queries immediately enforce the updated authorization state. Consistency requirements use local authoritative policy tokens, preventing any caching layer from returning stale unauthorized documents.`;
-      } else if (q.includes("sovereign") || q.includes("policy") || q.includes("permission") || q.includes("access")) {
-        mockCitations = [
-          {
-            chunk_id: "chk-arch-01",
-            document_id: "doc-arch-01",
-            title: "AegisMind System Architecture and Zero-Leakage Guarantee",
-            uri: "https://wiki.corp.internal/architecture/zero-leakage",
-            snippet: "All retrieval queries pass through Sovereign Access Policy authorization checks before candidate chunks reach the reranker or answer synthesis stages.",
-            score: 0.95,
-          },
-        ];
-        responseText = `AegisMind utilizes 100% sovereign relationship-based access control to enforce fine-grained permissions entirely locally. Candidate chunks undergo bulk authorization checks with authoritative local consistency before reaching rerankers or generative models, ensuring that users can only receive answers synthesized from documents they are explicitly authorized to view.`;
-      } else if (q.includes("pipeline") || q.includes("sacred") || q.includes("stages") || q.includes("retrieval")) {
-        mockCitations = [
-          {
-            chunk_id: "chk-pipe-03",
-            document_id: "doc-pipe-03",
-            title: "The 7-Stage Sacred Enforcement Pipeline",
-            uri: "https://wiki.corp.internal/retrieval/sacred-pipeline",
-            snippet: "The 7-stage retrieval lifecycle coordinates query embedding, coarse filtering, overfetching, sovereign policy checks, drop denied, rerank, and citations.",
-            score: 0.94,
-          },
-        ];
-        responseText = `AegisMind's Sacred Enforcement Pipeline coordinates the 7-stage retrieval lifecycle: Stage 1: Embed query into dense and sparse representations. Stage 2: Coarse pre-filter by tenant and group boundary. Stage 3: Overfetch candidates by a factor of 3.0 to 5.0. Stage 4: Bulk authorization checks against Sovereign Access Policies with authoritative consistency. Stage 5: Drop denied candidates strictly. Stage 6: Rerank surviving candidates with cross-encoders. Stage 7: Attach verifiable deep-linked citations.`;
-      } else if (q.includes("encrypt") || q.includes("kms") || q.includes("key") || q.includes("dek") || q.includes("aes")) {
-        mockCitations = [
-          {
-            chunk_id: "chk-enc-04",
-            document_id: "doc-enc-04",
-            title: "Envelope Encryption and KMS Key Hierarchy",
-            uri: "https://wiki.corp.internal/security/envelope-encryption",
-            snippet: "Data stored in AegisMind is secured using AES-256-GCM envelope encryption with per-document DEKs protected under root KEKs.",
-            score: 0.92,
-          },
-        ];
-        responseText = `Data stored in AegisMind is secured using AES-256-GCM envelope encryption. Document encryption keys (DEKs) are generated per document and encrypted under a root Key Encryption Key (KEK) managed in KMS or local master key storage. Vector embeddings and chunk content in PostgreSQL pgvectorscale remain cryptographically protected at rest and during transit.`;
-      } else if (q.includes("connector") || q.includes("confluence") || q.includes("jira") || q.includes("drive") || q.includes("slack")) {
-        mockCitations = [
-          {
-            chunk_id: "chk-conn-05",
-            document_id: "doc-conn-05",
-            title: "Enterprise Connectors and Cursor-Based Sync",
-            uri: "https://wiki.corp.internal/connectors/overview",
-            snippet: "AegisMind connects to 15 enterprise sources with cursor-based incremental sync and fine-grained permission extraction.",
-            score: 0.91,
-          },
-        ];
-        responseText = `AegisMind connects to 15 enterprise sources including Confluence, Jira, Google Drive, Slack, GitHub, Notion, Dropbox, Gmail, Linear, Salesforce, SharePoint, Teams, Zendesk, Asana, and PagerDuty. Each connector extracts resources, maps fine-grained source permissions into sovereign viewer, editor, and owner policies, and supports cursor-based incremental sync managed by the Scribe background worker.`;
-      } else {
-        mockCitations = [
-          {
-            chunk_id: "chk-arch-01",
-            document_id: "doc-arch-01",
-            title: "AegisMind System Architecture and Zero-Leakage Guarantee",
-            uri: "https://wiki.corp.internal/architecture/zero-leakage",
-            snippet: "AegisMind enforces a strict zero-leakage security model for enterprise search and generative AI.",
-            score: 0.89,
-          },
-        ];
-        responseText = `Based on verified access-controlled documents for ${params.user_id || "current user"}, AegisMind retrieved and authorized information relevant to "${params.query}". All retrieved chunks passed sovereign viewer authorization checks prior to synthesis, ensuring strict zero data leakage.`;
-      }
-
-      params.onCitations(mockCitations);
-
-      const words = responseText.split(" ");
-      let index = 0;
-      const interval = setInterval(() => {
-        if (index < words.length) {
-          params.onToken((index === 0 ? "" : " ") + words[index]);
-          index++;
-        } else {
-          clearInterval(interval);
-          params.onDone();
-        }
-      }, 30);
-    }, 350);
-  }, 350);
 }
 
 export function getFallbackConnectors(): ConnectorInfo[] {
