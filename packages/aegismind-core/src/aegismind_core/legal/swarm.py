@@ -100,6 +100,8 @@ def _robust_json_parse(raw: str) -> dict[str, Any]:
     raise ValueError(f"Could not parse grounded findings from model output: {raw[:200]}")
 
 
+import httpx
+
 class LegalSwarmOrchestrator:
     """Grounded Indian Law Multi-Agent Chamber.
     Eliminates all hardcoded templates/fallbacks, verifies verbatim quotes against
@@ -110,13 +112,41 @@ class LegalSwarmOrchestrator:
     def __init__(self, llm: OllamaAdapter | None = None) -> None:
         self.llm = llm or OllamaAdapter()
 
-    async def _call_llm(self, system_prompt: str, user_prompt: str, max_tokens: int = 650) -> str:
-        """Call Ollama qwen3.5:9b with zero thinking overhead and bounded token budget."""
+    async def _call_llm(self, system_prompt: str, user_prompt: str, max_tokens: int = 800, model: str = "qwen3.5:9b") -> str:
+        """Call Ollama with zero thinking overhead and GPU acceleration."""
+        formatted_prompt = (
+            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>assistant\n<think>\n</think>\n{{"
+        )
+        try:
+            base_url = await self.llm._resolve_base_url()
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                resp = await client.post(
+                    f"{base_url}/api/generate",
+                    json={
+                        "model": model,
+                        "prompt": formatted_prompt,
+                        "raw": True,
+                        "options": {
+                            "num_gpu": 26,
+                            "num_predict": max_tokens,
+                            "temperature": 0.1,
+                        },
+                        "stream": False,
+                    },
+                )
+                if resp.status_code == 200:
+                    raw_text = "{" + resp.json().get("response", "")
+                    return raw_text
+        except Exception as exc:
+            log.warning("Raw prompt with closed think tag failed, falling back: %s", exc)
+
         return await self.llm.generate(
             prompt=user_prompt,
             system_prompt=system_prompt,
             temperature=0.1,
-            model="qwen3.5:9b",
+            model=model,
             max_tokens=max_tokens,
         )
 
@@ -204,7 +234,16 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
       "quote": "verbatim quote directly from text",
       "statute": "specific Indian statute section e.g. NDPS Act s.52A, BSA s.63(4), BNSS s.105",
       "why_it_matters": "Why this fatal flaw destroys the case against client",
-      "opposing_counter": "Anticipated argument of prosecution"
+      "opposing_counter": "Anticipated argument of prosecution",
+      "procedural_motion": "Exact motion to file (e.g. S.52A challenge, S.63(4) BSA objection, Discharge, Bail)",
+      "courtroom_stage": "Trial stage (e.g. Bail, Framing of Charges, S.294 CrPC, Final Arguments)"
+    }}
+  ],
+  "defense_strategy": "Central trial narrative and tactical theory of defense",
+  "cross_examination": [
+    {{
+      "witness": "Specific named prosecution witness (e.g. PW-1, PW-2, PW-3, IO)",
+      "trap_questions": ["Pointed question 1 to extract fatal admission", "Pointed question 2", "Pointed question 3"]
     }}
   ],
   "facts_summary": "1-2 concise sentences summarizing the core charge and situation",
@@ -216,7 +255,7 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
         user_prompt = f"CASE DOSSIER / PLEADING TEXT:\n{text[:6000]}"
 
         try:
-            raw_output = await self._call_llm(system_instruction, user_prompt, max_tokens=900)
+            raw_output = await self._call_llm(system_instruction, user_prompt, max_tokens=1800)
             log.warning("RAW MODEL OUTPUT (first 400): %r", raw_output[:400])
             return _robust_json_parse(raw_output)
         except Exception as exc:
@@ -230,7 +269,7 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
         branch: str = "Criminal Law",
         forum: str = "High Court / Trial Court",
     ) -> str:
-        """Run the complete 7-step grounded legal analysis and format as a courtroom-ready response."""
+        """Run the complete grounded legal analysis in a single ultra-fast GPU pass."""
         trimmed = case_text.strip()
         
         # Step 1: Input Validation Gate
@@ -241,71 +280,15 @@ OUTPUT MUST BE VALID JSON ONLY with this schema:
                 f"The text provided (`{trimmed[:40]}`) is insufficient to identify evidentiary defects or formulate a defense strategy."
             )
 
-        # Step 2: Structured Audit
+        # Step 2: Single-Pass Structured Audit on GPU
         audit = await self.run_audit(trimmed, posture, branch, forum)
 
         # Step 3: Verify quotes and drop hallucinated findings
         raw_weaknesses = audit.get("weaknesses", [])
         good_weaknesses, dropped_count = self.verify_quotes(raw_weaknesses, trimmed)
-        
-        # If fewer than 2 verified weaknesses and model was too thin, retry once
-        if len(good_weaknesses) < 2 and len(trimmed) > 300:
-            log.info("Retrying audit once: only %d verified weaknesses", len(good_weaknesses))
-            try:
-                retry_audit = await self.run_audit(trimmed, posture, branch, forum)
-                retry_good, _ = self.verify_quotes(retry_audit.get("weaknesses", []), trimmed)
-                if len(retry_good) > len(good_weaknesses):
-                    audit = retry_audit
-                    good_weaknesses = retry_good
-            except Exception:
-                pass
-
         audit["weaknesses"] = good_weaknesses
 
-        # Step 4: Retrieve precedents per weakness from 205-case corpus
-        precedent_sections: list[str] = []
-        seen_citations = set()
-        for w in good_weaknesses[:4]:
-            statute = w.get("statute", "")
-            title = w.get("title", "")
-            query = f"{statute} {title}".strip()
-            hits = search_precedents(query, limit=2)
-            for h in hits:
-                if h.citation not in seen_citations:
-                    seen_citations.add(h.citation)
-                    precedent_sections.append(
-                        f"- **{h.title}** ({h.citation})\n"
-                        f"  *Applicability to `{title}`*: Ratio addresses {h.subject or 'statutory principles'}. "
-                        f"Relevant for establishing non-compliance with {statute}."
-                    )
-        
-        precedent_text = (
-            "\n".join(precedent_sections)
-            if precedent_sections
-            else "*(No directly applicable precedent in the 205 SCR corpus for these specific provisions - rely on direct statutory non-compliance)*"
-        )
-
-        # Step 5: Generate dynamic Battle Plan & Cross-Examination from verified weaknesses
-        battle_plan_prompt = f"""You are a senior Indian trial advocate preparing the courtroom battle plan for {posture}.
-Verified evidentiary defects and statutory violations:
-{json.dumps(good_weaknesses, indent=2)}
-
-Prosecution's strengths:
-{json.dumps(audit.get('other_side_strengths', []), indent=2)}
-
-Provide a sharp, aggressive, practical trial strategy:
-1. Procedural Applications: State the exact motions to file (e.g. S.52A NDPS non-compliance challenge, S.63(4) BSA electronic record objection, Discharge application under Section 227/239, Bail under Section 37 / long custody, S.58 BNSS illegal detention). Specify the exact courtroom stage.
-2. Defense Narrative: Formulate the central defense theory (e.g. broken chain of custody, scapegoat for systemic migration failure / alibi).
-3. Cross-Examination Artillery: Formulate 3-4 pointed, trap cross-examination questions for each specific prosecution witness named in the dossier (e.g. PW-1, PW-2, PW-3, IO) designed to extract fatal admissions under Indian trial procedure.
-
-OUTPUT FORMAT: Clear markdown with headings, no boilerplate or filler."""
-
-        battle_plan = await self._call_llm(
-            "You are a battle-tested Indian defense litigator. Provide specific, aggressive, realistic trial strategies.",
-            battle_plan_prompt
-        )
-
-        # Step 6: Compute Defense Posture (Never default to 85% or Strong)
+        # Step 4: Compute Defense Posture
         high_count = sum(1 for w in good_weaknesses if w.get("severity") == "HIGH")
         med_count = sum(1 for w in good_weaknesses if w.get("severity") == "MEDIUM")
         opp_strengths = audit.get("other_side_strengths", [])
@@ -317,7 +300,7 @@ OUTPUT FORMAT: Clear markdown with headings, no boilerplate or filler."""
         else:
             defense_posture = "VULNERABLE POSITION (Documentary chain of custody largely intact; settlement or early mitigation advised)"
 
-        # Step 7: Format Final Output
+        # Step 5: Format Final Output
         output_parts: list[str] = [
             f"# ⚖️ Legal Defense Analysis & Strategy Assessment\n",
             f"**Evaluation Posture**: {posture} | **Jurisdiction**: Indian Law | **Defense Position**: **{defense_posture}**\n",
@@ -337,14 +320,30 @@ OUTPUT FORMAT: Clear markdown with headings, no boilerplate or filler."""
                     f"- **Statutory Violation**: `{w.get('statute', 'Indian Law')}`\n"
                     f"- **Defense Impact**: {w.get('why_it_matters')}\n"
                     f"- **Anticipated Prosecution Argument**: {w.get('opposing_counter')}\n"
+                    f"- **Procedural Action**: {w.get('procedural_motion', 'Object at trial')} *[Stage: {w.get('courtroom_stage', 'Trial')}]*\n"
                 )
 
         if audit.get("other_side_strengths"):
-            output_parts.append("## 3. Prosecution / Complainant Key Strengths\n" + "\n".join(f"- {s}" for s in audit["other_side_strengths"]) + "\n")
+            output_parts.append("## 3. Prosecution Key Strengths to Defuse\n" + "\n".join(f"- {s}" for s in audit["other_side_strengths"]) + "\n")
 
         if audit.get("unclear_or_missing"):
-            output_parts.append("## 4. Evidentiary Gaps in Record (Missing Documentation)\n" + "\n".join(f"- {m}" for m in audit["unclear_or_missing"]) + "\n")
+            output_parts.append("## 4. Evidentiary Gaps & Missing Records\n" + "\n".join(f"- {m}" for m in audit["unclear_or_missing"]) + "\n")
 
-        output_parts.append(f"## 5. Tactical Battle Plan & Cross-Examination Arsenal\n{battle_plan}\n")
+        # Step 6: Tactical Battle Plan & Cross-Examination Arsenal
+        battle_plan_parts = ["## 5. Tactical Battle Plan & Cross-Examination Arsenal\n"]
+        if audit.get("defense_strategy"):
+            battle_plan_parts.append(f"### Defense Core Narrative\n{audit['defense_strategy']}\n")
+
+        cross_exams = audit.get("cross_examination", [])
+        if cross_exams:
+            battle_plan_parts.append("### Targeted Witness Cross-Examination Artillery\n")
+            for ce in cross_exams:
+                wit = ce.get("witness", "Prosecution Witness")
+                battle_plan_parts.append(f"#### Cross-Examination of {wit}:")
+                for q in ce.get("trap_questions", []):
+                    battle_plan_parts.append(f"- \"{q}\"")
+                battle_plan_parts.append("")
+
+        output_parts.append("\n".join(battle_plan_parts))
 
         return "\n".join(output_parts)

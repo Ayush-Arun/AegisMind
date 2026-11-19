@@ -104,20 +104,19 @@ class OllamaAdapter:
             "prompt": prompt,
             "stream": False,
         }
-        options: dict[str, Any] = {}
+        options: dict[str, Any] = {
+            "stop": ["<think>"],
+            "enable_thinking": False,
+        }
         if os.environ.get("OLLAMA_THINK", "false").lower() not in ("true", "1", "yes"):
             payload["think"] = False
-            options["enable_thinking"] = False
-        if os.environ.get("OLLAMA_THINK", "false").lower() not in ("true", "1", "yes"):
-            payload["think"] = False
-            options["enable_thinking"] = False
         if system_prompt:
             payload["system"] = system_prompt
         if max_tokens is not None:
             options["num_predict"] = max_tokens
         if temperature is not None:
             options["temperature"] = temperature
-        num_gpu_env = os.environ.get("OLLAMA_NUM_GPU")
+        num_gpu_env = os.environ.get("OLLAMA_NUM_GPU", "26")
         if num_gpu_env is not None:
             try:
                 options["num_gpu"] = int(num_gpu_env)
@@ -173,20 +172,19 @@ class OllamaAdapter:
             "prompt": prompt,
             "stream": True,
         }
-        options: dict[str, Any] = {}
+        options: dict[str, Any] = {
+            "stop": ["<think>"],
+            "enable_thinking": False,
+        }
         if os.environ.get("OLLAMA_THINK", "false").lower() not in ("true", "1", "yes"):
             payload["think"] = False
-            options["enable_thinking"] = False
-        if os.environ.get("OLLAMA_THINK", "false").lower() not in ("true", "1", "yes"):
-            payload["think"] = False
-            options["enable_thinking"] = False
         if system_prompt:
             payload["system"] = system_prompt
         if max_tokens is not None:
             options["num_predict"] = max_tokens
         if temperature is not None:
             options["temperature"] = temperature
-        num_gpu_env = os.environ.get("OLLAMA_NUM_GPU")
+        num_gpu_env = os.environ.get("OLLAMA_NUM_GPU", "26")
         if num_gpu_env is not None:
             try:
                 options["num_gpu"] = int(num_gpu_env)
