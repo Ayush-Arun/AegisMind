@@ -1660,6 +1660,11 @@ def create_routes(state: CoreState) -> APIRouter:
             models = await llm_adapter.list_models()
         except Exception:
             models = []
+        models = list(models)
+        if os.environ.get("GEMINI_API_KEY"):
+            if "gemini-2.5-flash" not in models:
+                models.append("gemini-2.5-flash")
+
         default_name = getattr(llm_adapter, "default_model", "qwen3.5:9b")
         if default_name in models:
             active = default_name

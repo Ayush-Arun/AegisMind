@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import traceback
 from collections.abc import AsyncIterator
 from typing import Any
+
+import httpx
 
 from aegismind_core.adapters.llm.ollama import OllamaAdapter
 from aegismind_core.legal.retriever import search_precedents
@@ -111,6 +114,49 @@ class LegalSwarmOrchestrator:
 
     def __init__(self, llm: OllamaAdapter | None = None) -> None:
         self.llm = llm or OllamaAdapter()
+
+    async def _call_gemini_stream(
+        self,
+        prompt: str,
+        system_instruction: str = "",
+        model: str = "gemini-2.5-flash",
+    ) -> AsyncIterator[str]:
+        """Stream tokens from Gemini API."""
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            return
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
+        payload: dict[str, Any] = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}]
+        }
+        if system_instruction:
+            payload["systemInstruction"] = {
+                "parts": [{"text": system_instruction}]
+            }
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream("POST", url, json=payload) as resp:
+                    if resp.status_code == 200:
+                        async for line in resp.aiter_lines():
+                            if line.startswith("data: "):
+                                try:
+                                    data = json.loads(line[6:])
+                                    candidates = data.get("candidates", [])
+                                    if candidates:
+                                        parts = candidates[0].get("content", {}).get("parts", [])
+                                        for p in parts:
+                                            txt = p.get("text", "")
+                                            if txt:
+                                                yield txt
+                                except Exception:
+                                    continue
+                    else:
+                        err_text = await resp.aread()
+                        log.warning("Gemini API call failed (%d): %s", resp.status_code, err_text[:200])
+        except Exception as exc:
+            log.warning("Gemini streaming exception: %s", exc)
 
     async def _call_llm_stream(
         self,
@@ -488,12 +534,57 @@ GUIDELINES:
 2. Structure your response with bold Markdown headings.
 3. Be sharp, aggressive, practical, and direct. No citation popup metadata, no boilerplate disclaimers, no filler."""
 
+        if "gemini" in model.lower():
+            # Direct generation with Gemini
+            async for chunk in self._call_gemini_stream(
+                prompt=f"{instruction_focus}\n\nCASE RECORD / PLEADINGS:\n{trimmed[:14000]}",
+                system_instruction=system_instruction,
+                model="gemini-2.5-flash",
+            ):
+                yield chunk
+            return
+
         user_prompt = f"CASE RECORD / PLEADINGS:\n{trimmed[:6500]}"
 
+        qwen_accumulated: list[str] = []
         async for chunk in self._call_llm_stream(
             system_prompt=system_instruction,
             user_prompt=user_prompt,
             max_tokens=2500,
             model=model,
         ):
+            qwen_accumulated.append(chunk)
             yield chunk
+
+        # Second Chair / Senior Counsel Audit via Gemini (if API key available)
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if api_key and qwen_accumulated:
+            full_qwen_text = "".join(qwen_accumulated)
+            senior_counsel_prompt = f"""You are a Senior Advocate of the Supreme Court of India serving as Second Chair reviewing Junior Counsel's initial case analysis.
+Carefully scrutinize Junior Counsel's findings against the record.
+Identify any FATAL EVIDENTIARY LOOPHOLES, statutory bars, mandatory procedures, or critical legal grounds under Indian Law ({branch}) that Junior Counsel missed, understated, or misapplied.
+
+CASE DOSSIER / RECORD:
+{trimmed[:7000]}
+
+JUNIOR COUNSEL'S INITIAL ANALYSIS:
+{full_qwen_text[:5000]}
+
+USER'S INQUIRY:
+{user_instruction if user_instruction else "Find all weaknesses and formulate defense strategy"}
+
+CRITICAL INSTRUCTIONS:
+- If Junior Counsel covered all fatal grounds properly, output: "✅ **Junior Counsel's findings are legally sound and sufficient; no critical statutory loopholes were overlooked.**"
+- If critical loopholes, unaddressed statutory non-compliances, or key trial defenses were missed, list them in pointed bullets with exact statutory provisions, landmark case ratios, and practical courtroom execution.
+- Be concise, razor-sharp, and direct. No boilerplate disclaimers."""
+
+            audit_tokens: list[str] = []
+            async for chunk in self._call_gemini_stream(
+                prompt=senior_counsel_prompt,
+                system_instruction="You are an elite Senior Supreme Court of India Advocate conducting a rigorous loophole audit.",
+                model="gemini-2.5-flash",
+            ):
+                if not audit_tokens:
+                    yield "\n\n---\n### 🏛️ Senior Counsel Review & Loophole Audit (Gemini Chamber)\n\n"
+                audit_tokens.append(chunk)
+                yield chunk
