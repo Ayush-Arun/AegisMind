@@ -684,7 +684,7 @@ def create_routes(state: CoreState) -> APIRouter:
                     system_prompt = budget_res.system_prompt
                     fallback_answer_text = (
                         "Could not stream response from local Ollama. Please ensure Ollama is "
-                        "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is "
+                        "running on http://127.0.0.1:11434 and model 'qwen3.5:9b' is "
                         "available."
                     )
                 elif res.total_candidates_evaluated > 0 and res.authorized_candidates_count == 0:
@@ -705,7 +705,7 @@ def create_routes(state: CoreState) -> APIRouter:
                 else:
                     fallback_answer_text = (
                         "Could not stream response from local Ollama. Please ensure Ollama is "
-                        "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is "
+                        "running on http://127.0.0.1:11434 and model 'qwen3.5:9b' is "
                         "available."
                     )
                     system_prompt = (
@@ -720,7 +720,7 @@ def create_routes(state: CoreState) -> APIRouter:
                     system_prompt = budget_res.system_prompt
                     fallback_answer_text = (
                         "Could not stream response from local Ollama. Please ensure Ollama is "
-                        "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is "
+                        "running on http://127.0.0.1:11434 and model 'qwen3.5:9b' is "
                         "available."
                     )
                 elif res.total_candidates_evaluated > 0 and res.authorized_candidates_count == 0:
@@ -741,7 +741,7 @@ def create_routes(state: CoreState) -> APIRouter:
                 else:
                     fallback_answer_text = (
                         "Could not stream response from local Ollama. Please ensure Ollama is "
-                        "running on http://127.0.0.1:11434 and model 'llama3.2:latest' is "
+                        "running on http://127.0.0.1:11434 and model 'qwen3.5:9b' is "
                         "available."
                     )
                     system_prompt = (
@@ -888,7 +888,7 @@ def create_routes(state: CoreState) -> APIRouter:
             else None
         )
         ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-        model = os.environ.get("OLLAMA_MODEL", "llama3.2:latest")
+        model = os.environ.get("OLLAMA_MODEL", "qwen3.5:9b")
         extractor = MemoryExtractor(
             store=state.long_term_memory,
             ollama_url=ollama_url,
@@ -1521,7 +1521,7 @@ def create_routes(state: CoreState) -> APIRouter:
             models = await llm_adapter.list_models()
         except Exception:
             models = []
-        default_name = getattr(llm_adapter, "default_model", "llama3.2:latest")
+        default_name = getattr(llm_adapter, "default_model", "qwen3.5:9b")
         if default_name in models:
             active = default_name
         elif models:

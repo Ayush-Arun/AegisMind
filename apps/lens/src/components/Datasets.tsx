@@ -570,7 +570,7 @@ export function Datasets({
                   </option>
                 ))
               ) : (
-                <option value="llama3.2:latest">llama3.2:latest</option>
+                <option value="qwen3.5:9b">qwen3.5:9b</option>
               )}
             </select>
 
@@ -1026,7 +1026,7 @@ export function Datasets({
                         Dataset Assistant
                       </span>
                       <span className="text-[10px] text-muted-foreground font-mono">
-                        {selectedModel || "llama3.2:latest"}
+                        {selectedModel || "qwen3.5:9b"}
                       </span>
                     </div>
                     <div className="p-3 rounded-lg bg-card/70 border border-border/80 text-foreground space-y-1.5 leading-relaxed text-xs">

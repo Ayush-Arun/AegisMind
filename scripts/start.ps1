@@ -7,7 +7,7 @@ Write-Host ""
 
 # Check if Ollama is running
 try {
-    $ollamaStatus = & curl -s http://localhost:11434/api/tags 2>&1
+    $ollamaStatus = & curl.exe -s http://localhost:11434/api/tags 2>&1
     if ($ollamaStatus) {
         Write-Host "  ✓ Ollama is running" -ForegroundColor Green
     }
@@ -19,7 +19,7 @@ try {
 }
 
 # Get the project root (parent of scripts/)
-$ProjectRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
+$ProjectRoot = if ($PSScriptRoot) { Split-Path -Parent -Path $PSScriptRoot } else { Split-Path -Parent (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition) }
 
 # Start backend
 Write-Host ""

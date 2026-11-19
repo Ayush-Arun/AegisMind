@@ -41,7 +41,7 @@ def get_llm_adapter(provider: str | None = None) -> LLMPort:
     # Default to Ollama adapter
     ollama_base_url = os.environ.get("LLM_BASE_URL") or os.environ.get("OLLAMA_URL")
     ollama_model = (
-        os.environ.get("LLM_MODEL") or os.environ.get("OLLAMA_MODEL") or "llama3.2:latest"
+        os.environ.get("LLM_MODEL") or os.environ.get("OLLAMA_MODEL") or "qwen3.5:9b"
     )
     logger.info("Configuring OllamaAdapter (model=%s)", ollama_model)
     return OllamaAdapter(base_url=ollama_base_url, model=ollama_model)

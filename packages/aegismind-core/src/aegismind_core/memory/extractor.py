@@ -151,7 +151,7 @@ class MemoryExtractor:
         self,
         store: SQLiteMemoryStore,
         ollama_url: str = "http://localhost:11434",
-        model: str = "llama3.2:latest",
+        model: str = "qwen3.5:9b",
         settings: MemorySettings | None = None,
         llm_fn: Callable[[str], Awaitable[str]] | None = None,
     ) -> None:
@@ -175,10 +175,24 @@ class MemoryExtractor:
         if self._llm_fn is not None:
             return await self._llm_fn(prompt)
 
+        gen_payload: dict[str, Any] = {
+            "model": self._model,
+            "prompt": prompt,
+            "stream": False,
+            "think": False,
+            "options": {"enable_thinking": False},
+        }
+        num_gpu_env = os.environ.get("OLLAMA_NUM_GPU")
+        if num_gpu_env is not None:
+            try:
+                gen_payload["options"]["num_gpu"] = int(num_gpu_env)
+            except ValueError:
+                pass
+
         async with httpx.AsyncClient(timeout=90.0) as client:
             resp = await client.post(
                 f"{self._ollama_url}/api/generate",
-                json={"model": self._model, "prompt": prompt, "stream": False},
+                json=gen_payload,
             )
             resp.raise_for_status()
             return str(resp.json().get("response", ""))

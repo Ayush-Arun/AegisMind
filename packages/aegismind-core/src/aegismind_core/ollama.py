@@ -12,7 +12,7 @@ from aegismind_core.observability import trace_span
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:latest")
+DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3.5:9b")
 
 
 def get_candidate_ollama_urls() -> list[str]:

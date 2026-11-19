@@ -177,7 +177,12 @@ class SovereignAgentLoop:
         self.ollama_url = (
             ollama_url or os.environ.get("OLLAMA_URL") or "http://localhost:11434"
         ).rstrip("/")
-        self.model = model or os.environ.get("OLLAMA_AGENT_MODEL") or "qwen2.5:7b"
+        self.model = (
+            model
+            or os.environ.get("OLLAMA_AGENT_MODEL")
+            or os.environ.get("OLLAMA_MODEL")
+            or "qwen3.5:9b"
+        )
         self.audit_recorder = audit_recorder
         self.activity_recorder = activity_recorder
         self.max_tool_calls_per_turn = max_tool_calls_per_turn
@@ -349,14 +354,28 @@ class SovereignAgentLoop:
                 return cast(dict[str, Any], await res)
             return cast(dict[str, Any], res)
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "tools": tools,
             "stream": False,
         }
+        options: dict[str, Any] = {}
+        if os.environ.get("OLLAMA_THINK", "false").lower() not in ("true", "1", "yes"):
+            payload["think"] = False
+            options["enable_thinking"] = False
+        num_gpu_env = os.environ.get("OLLAMA_NUM_GPU")
+        if num_gpu_env is not None:
+            try:
+                options["num_gpu"] = int(num_gpu_env)
+            except ValueError:
+                pass
+        if options:
+            payload["options"] = options
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        timeout_val = float(os.environ.get("OLLAMA_TIMEOUT", "120.0"))
+
+        async with httpx.AsyncClient(timeout=timeout_val) as client:
             resp = await client.post(f"{self.ollama_url}/api/chat", json=payload)
             if resp.status_code == 200:
                 data = resp.json()
@@ -396,8 +415,7 @@ class SovereignAgentLoop:
                 return AgentRunResult(
                     final_answer=(
                         f"Local model error: could not connect to Ollama at {self.ollama_url}. "
-                        "Please verify Ollama is running (`ollama run qwen2.5:7b` or "
-                        "`ollama run llama3.2`)."
+                        "Please verify Ollama is running (`ollama run qwen3.5:9b`)."
                     ),
                     actions_taken=actions_taken,
                     total_tool_calls=total_calls,

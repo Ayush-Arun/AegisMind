@@ -114,7 +114,7 @@ class OllamaQueryRewriterAdapter:
     def __init__(
         self,
         base_url: str = "http://127.0.0.1:11434",
-        model: str = "llama3.2:latest",
+        model: str = "qwen3.5:9b",
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -158,14 +158,22 @@ class OllamaQueryRewriterAdapter:
 
         if self._client is not None:
             try:
+                opts: dict[str, Any] = {"enable_thinking": False}
+                if os.environ.get("OLLAMA_NUM_GPU") is not None:
+                    try:
+                        opts["num_gpu"] = int(os.environ["OLLAMA_NUM_GPU"])
+                    except ValueError:
+                        pass
                 resp = await self._client.post(
                     f"{self.base_url}/api/generate",
                     json={
                         "model": self.model,
                         "prompt": prompt,
                         "stream": False,
+                        "think": False,
+                        "options": opts,
                     },
-                    timeout=5.0,
+                    timeout=15.0,
                 )
                 if resp.status_code == 200:
                     data = resp.json()

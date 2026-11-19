@@ -212,12 +212,12 @@ export async function listConnectors(): Promise<{ connectors: ConnectorInfo[]; t
     if (!Array.isArray(rawList)) {
       return { connectors: [], total: 0, mode: "UNKNOWN" };
     }
-    
+
     const mapped = rawList.map((item: any) => {
       const spec = item.spec || {};
       const reg = item.registration || {};
       const name = spec.name || item.name || "connector";
-      
+
       const formattedTitle = name
         .replace(/_/g, " ")
         .replace(/\b\w/g, (l: string) => l.toUpperCase());
@@ -234,7 +234,7 @@ export async function listConnectors(): Promise<{ connectors: ConnectorInfo[]; t
         registration: reg,
       };
     });
-    
+
     return {
       connectors: mapped,
       total: data.total || mapped.length,
@@ -433,16 +433,16 @@ export async function listModels(): Promise<ModelInfo> {
     const response = await fetch(`${API_BASE}/models`);
     if (!response.ok) {
       return {
-        models: ["llama3.2:latest", "llama3:latest"],
-        active_model: "llama3.2:latest",
+        models: ["qwen3.5:9b", "qwen3.5:2b"],
+        active_model: "qwen3.5:9b",
         provider: "ollama",
       };
     }
     return response.json();
   } catch {
     return {
-      models: ["llama3.2:latest", "llama3:latest"],
-      active_model: "llama3.2:latest",
+      models: ["qwen3.5:9b", "qwen3.5:2b"],
+      active_model: "qwen3.5:9b",
       provider: "ollama",
     };
   }
@@ -951,8 +951,8 @@ export async function getLocalToolActivity(
         item.status === "running"
           ? "running"
           : item.status === "failed" || meta.success === false
-          ? "failed"
-          : "success";
+            ? "failed"
+            : "success";
       const dur = typeof item.duration_ms === "number" ? item.duration_ms : typeof meta.duration_ms === "number" ? meta.duration_ms : 0;
       const resSum = (item.result_summary as string) || (meta.result_summary as string) || (meta.output_excerpt as string) || null;
       const err = (item.error as string) || (meta.reason as string) || null;

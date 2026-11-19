@@ -508,8 +508,8 @@ export function Chat({
                     </option>
                   ))
                 ) : (
-                  <option value="llama3.2:latest" className="bg-white dark:bg-[#12151f] text-slate-900 dark:text-white">
-                    llama3.2:latest
+                  <option value="qwen3.5:9b" className="bg-white dark:bg-[#12151f] text-slate-900 dark:text-white">
+                    qwen3.5:9b
                   </option>
                 )}
               </select>

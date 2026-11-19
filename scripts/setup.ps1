@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ProjectRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
+$ProjectRoot = if ($PSScriptRoot) { Split-Path -Parent -Path $PSScriptRoot } else { Split-Path -Parent (Split-Path -Parent -Path $MyInvocation.MyCommand.Definition) }
 
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "  AEGISMIND SOVEREIGN SECOND BRAIN: SETUP" -ForegroundColor Cyan
@@ -18,7 +18,8 @@ Write-Host "[1/5] Checking Python..." -ForegroundColor Yellow
 try {
     $version = & python --version 2>&1
     Write-Host "  ✓ Python found: $version" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "  ✗ Python not found! Install Python 3.12+ first." -ForegroundColor Red
     exit 1
 }
@@ -28,7 +29,8 @@ Write-Host "[2/5] Checking UV..." -ForegroundColor Yellow
 try {
     & uv --version | Out-Null
     Write-Host "  ✓ UV found" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "  ✗ UV not found! Install UV: https://docs.astral.sh/uv" -ForegroundColor Red
     exit 1
 }
@@ -38,7 +40,8 @@ Write-Host "[3/5] Checking Ollama..." -ForegroundColor Yellow
 try {
     $ollamaVersion = & ollama --version 2>&1
     Write-Host "  ✓ Ollama found: $ollamaVersion" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "  ✗ Ollama not found! Install Ollama: https://ollama.com" -ForegroundColor Red
     exit 1
 }
@@ -46,7 +49,7 @@ try {
 # Check Ollama models
 Write-Host "[4/5] Checking Ollama models..." -ForegroundColor Yellow
 $models = & ollama list 2>&1
-$neededModels = @("llama3.2:latest", "nomic-embed-text:latest", "qwen2.5:7b")
+$neededModels = @("qwen3.5:9b", "nomic-embed-text:latest")
 $missingModels = @()
 
 foreach ($model in $neededModels) {
@@ -62,11 +65,13 @@ if ($missingModels.Count -gt 0) {
         try {
             & ollama pull $model 2>&1 | Out-Null
             Write-Host "    ✓ $model pulled" -ForegroundColor Green
-        } catch {
+        }
+        catch {
             Write-Host "    ✗ Failed to pull $model" -ForegroundColor Red
         }
     }
-} else {
+}
+else {
     Write-Host "  ✓ All models available" -ForegroundColor Green
 }
 
@@ -75,7 +80,8 @@ Write-Host "[5/5] Installing dependencies..." -ForegroundColor Yellow
 try {
     & uv sync --all-groups 2>&1 | Out-Null
     Write-Host "  ✓ Dependencies synced" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "  ✗ Dependency sync failed" -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
 }
@@ -92,7 +98,8 @@ try {
 
     & uv pip install -e packages/aegismind-core 2>&1 | Out-Null
     Write-Host "  ✓ aegismind-core installed" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "  ✗ Package installation failed" -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
 }
@@ -103,7 +110,8 @@ Write-Host "Seeding knowledge graph..." -ForegroundColor Yellow
 try {
     & python "$ProjectRoot/scripts/seed_graph.py" 2>&1 | Out-Null
     Write-Host "  ✓ Knowledge graph seeded (9 nodes, 9 connections)" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "  ✗ Graph seeding failed, run manually: python scripts/seed_graph.py" -ForegroundColor Yellow
 }
 

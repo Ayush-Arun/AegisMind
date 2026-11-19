@@ -66,7 +66,7 @@ class OllamaAdapter:
             model
             or os.environ.get("LLM_MODEL")
             or os.environ.get("OLLAMA_MODEL")
-            or "llama3.2:latest"
+            or "qwen3.5:9b"
         )
         self.default_context_window = int(os.environ.get("LLM_CONTEXT_WINDOW", str(context_window)))
         self._client = client
@@ -104,15 +104,29 @@ class OllamaAdapter:
             "prompt": prompt,
             "stream": False,
         }
+        options: dict[str, Any] = {}
+        if os.environ.get("OLLAMA_THINK", "false").lower() not in ("true", "1", "yes"):
+            payload["think"] = False
+            options["enable_thinking"] = False
+        if os.environ.get("OLLAMA_THINK", "false").lower() not in ("true", "1", "yes"):
+            payload["think"] = False
+            options["enable_thinking"] = False
         if system_prompt:
             payload["system"] = system_prompt
-        options: dict[str, Any] = {}
         if max_tokens is not None:
             options["num_predict"] = max_tokens
         if temperature is not None:
             options["temperature"] = temperature
+        num_gpu_env = os.environ.get("OLLAMA_NUM_GPU")
+        if num_gpu_env is not None:
+            try:
+                options["num_gpu"] = int(num_gpu_env)
+            except ValueError:
+                pass
         if options:
             payload["options"] = options
+
+        timeout_val = float(os.environ.get("OLLAMA_TIMEOUT", "120.0"))
 
         with trace_span(
             "llm.ollama.generate",
@@ -120,7 +134,7 @@ class OllamaAdapter:
         ):
             if self._client is not None:
                 resp = await self._client.post(
-                    f"{base_url}/api/generate", json=payload, timeout=60.0
+                    f"{base_url}/api/generate", json=payload, timeout=timeout_val
                 )
                 if resp.status_code == 200:
                     data = resp.json()
@@ -128,8 +142,8 @@ class OllamaAdapter:
                 logger.warning("Ollama generate returned status %d", resp.status_code)
                 return ""
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(f"{base_url}/api/generate", json=payload, timeout=60.0)
+            async with httpx.AsyncClient(timeout=timeout_val) as client:
+                resp = await client.post(f"{base_url}/api/generate", json=payload, timeout=timeout_val)
                 if resp.status_code == 200:
                     data = resp.json()
                     return str(data.get("response", "")).strip()
@@ -159,15 +173,29 @@ class OllamaAdapter:
             "prompt": prompt,
             "stream": True,
         }
+        options: dict[str, Any] = {}
+        if os.environ.get("OLLAMA_THINK", "false").lower() not in ("true", "1", "yes"):
+            payload["think"] = False
+            options["enable_thinking"] = False
+        if os.environ.get("OLLAMA_THINK", "false").lower() not in ("true", "1", "yes"):
+            payload["think"] = False
+            options["enable_thinking"] = False
         if system_prompt:
             payload["system"] = system_prompt
-        options: dict[str, Any] = {}
         if max_tokens is not None:
             options["num_predict"] = max_tokens
         if temperature is not None:
             options["temperature"] = temperature
+        num_gpu_env = os.environ.get("OLLAMA_NUM_GPU")
+        if num_gpu_env is not None:
+            try:
+                options["num_gpu"] = int(num_gpu_env)
+            except ValueError:
+                pass
         if options:
             payload["options"] = options
+
+        timeout_val = float(os.environ.get("OLLAMA_TIMEOUT", "120.0"))
 
         with trace_span(
             "llm.ollama.stream_generate",
@@ -193,7 +221,7 @@ class OllamaAdapter:
                         except Exception as exc:
                             logger.debug("Error parsing Ollama chunk: %s", exc)
             else:
-                async with httpx.AsyncClient(timeout=60.0) as client:
+                async with httpx.AsyncClient(timeout=timeout_val) as client:
                     async with client.stream(
                         "POST", f"{base_url}/api/generate", json=payload
                     ) as response:
