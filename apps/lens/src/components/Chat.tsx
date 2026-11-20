@@ -348,7 +348,7 @@ export function Chat({
               setCurrentThinking(`Reading attached document: ${att.name}...`);
               const res = await parseFile(att.file);
               if (res.content) {
-                textSnippets.push(`--- Attached File: ${att.name} ---\n${res.content.slice(0, 60000)}`);
+                textSnippets.push(`--- Attached File: ${att.name} ---\n${res.content.slice(0, 120000)}`);
               }
             } catch {
               // fallback

@@ -644,7 +644,11 @@ def create_routes(state: CoreState) -> APIRouter:
                     "defend", "defense", "weak point", "weakness", "case file",
                     "fir", "chargesheet", "petition", "quash", "accused", "prosecution",
                     "bns", "bnss", "bsa", "ipc", "crpc", "ndps", "ni act", "section 138",
-                    "section 420", "section 482", "section 52a", "section 63", "section 65b"
+                    "section 420", "section 482", "section 52a", "section 63", "section 65b",
+                    "pocso", "bail", "interim", "anticipatory", "cpc", "order 7",
+                    "specific performance", "arbitration", "cheque", "judgment", "ruling",
+                    "precedent", "supreme court", "high court", "appeal", "statute", "evidence",
+                    "legal", "lawyer", "advocate", "section 15", "section 67b"
                 ])
                 or q_lower.strip() in ["asdf", "test"]
             )

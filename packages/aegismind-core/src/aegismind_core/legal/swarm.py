@@ -128,7 +128,11 @@ class LegalSwarmOrchestrator:
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
         payload: dict[str, Any] = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}]
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": 8192,
+                "temperature": 0.2,
+            },
         }
         if system_instruction:
             payload["systemInstruction"] = {
@@ -534,57 +538,56 @@ GUIDELINES:
 2. Structure your response with bold Markdown headings.
 3. Be sharp, aggressive, practical, and direct. No citation popup metadata, no boilerplate disclaimers, no filler."""
 
-        if "gemini" in model.lower():
-            # Direct generation with Gemini
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+
+        # OPTION A: Invert roles — Gemini 2.5 Flash is the Primary Legal Brain
+        if api_key:
+            log.info("Executing Primary Authoritative Legal Analysis via Gemini 2.5 Flash (Option A)")
+            gemini_system = f"""You are a Senior Supreme Court of India Advocate, Constitutional Jurist, and Trial Strategist advising the {posture} in a {branch} matter before {forum}.
+Analyze the case record / document with absolute statutory accuracy under Indian Law (BNS/BNSS/BSA, IPC/CrPC/IEA, POCSO Act, NDPS Act, NI Act, Specific Relief Act, Limitation Act, Arbitration Act, Constitution of India).
+
+CORE MANDATES & ZERO-HALLUCINATION RULES:
+1. STRICT STATUTORY FIDELITY: Cite exact Section numbers, sub-sections, ingredients, and legal tests. Never conflate different Acts (e.g., Evidence Act confession vs CrPC, NDPS Act Section 37 bail conditions vs CrPC).
+2. ZERO FABRICATION OF PRECEDENTS: Cite only real, verifiable Supreme Court of India or High Court judgments with their authentic binding legal ratios (e.g., State of Punjab v. Baldev Singh / Union of India v. Mohanlal for NDPS; Dayal Singh / Bhajan Lal for CrPC; Just Rights for Children Alliance v. S. Harish for POCSO). Never invent fictional case names or fake citations.
+3. FOR COURT JUDGMENTS (e.g., Supreme Court / High Court Rulings):
+   - Precisely extract and articulate: Case Title, Bench / Coram, Date, Appeal / SLP numbers.
+   - Core Questions of Law and statutory conflicts resolved by the Court.
+   - Rigorous Statutory Interpretation of key provisions analyzed (e.g., Section 15 POCSO Act sub-sections (1), (2), (3) Actus Reus vs Mens Rea; Section 67B IT Act; Constructive Possession doctrines).
+   - Operative Directions, Rulings, and their binding precedential impact for trials and appellate litigation.
+4. FOR DEFENSE / TRIAL BRIEFS (FIRs, Chargesheets, Complaints):
+   - Expose fatal procedural non-compliances, broken chain of custody, and mandatory statutory lapses.
+   - Provide concrete courtroom battle tactics with specific applications under CrPC/BNSS or Evidence Act/BSA and pointed cross-examination trap questions.
+{specialized_rules}
+
+FORMATTING:
+- Use clear bold Markdown headings, bullet points, and authoritative legal analysis.
+- Be exhaustive, razor-sharp, and direct. Do not truncate your analysis."""
+
+            full_prompt = f"{instruction_focus}\n\nCASE RECORD / DOCUMENT TEXT:\n{trimmed[:120000]}"
+
+            streamed_tokens = 0
             async for chunk in self._call_gemini_stream(
-                prompt=f"{instruction_focus}\n\nCASE RECORD / PLEADINGS:\n{trimmed[:14000]}",
-                system_instruction=system_instruction,
+                prompt=full_prompt,
+                system_instruction=gemini_system,
                 model="gemini-2.5-flash",
             ):
+                streamed_tokens += 1
                 yield chunk
-            return
 
-        user_prompt = f"CASE RECORD / PLEADINGS:\n{trimmed[:6500]}"
+            if streamed_tokens > 0:
+                return
 
-        qwen_accumulated: list[str] = []
+            log.warning("Gemini API yielded 0 tokens; falling back to local model on RTX 4050.")
+
+        # Fallback: Local Qwen 3.5 on RTX 4050 with strict extractive rules (No hallucinations)
+        user_prompt = f"CASE RECORD / PLEADINGS:\n{trimmed[:7500]}"
+        strict_local_system = f"""{system_instruction}
+STRICT EXTRACTIVE RULE: You are strictly an extractive summarizer. You may ONLY cite facts, sections, and statements explicitly present in the provided text. You are strictly forbidden from inventing outside case laws or fake citations."""
+
         async for chunk in self._call_llm_stream(
-            system_prompt=system_instruction,
+            system_prompt=strict_local_system,
             user_prompt=user_prompt,
             max_tokens=2500,
-            model=model,
+            model=model or "qwen3.5:9b",
         ):
-            qwen_accumulated.append(chunk)
             yield chunk
-
-        # Second Chair / Senior Counsel Audit via Gemini (if API key available)
-        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-        if api_key and qwen_accumulated:
-            full_qwen_text = "".join(qwen_accumulated)
-            senior_counsel_prompt = f"""You are a Senior Advocate of the Supreme Court of India serving as Second Chair reviewing Junior Counsel's initial case analysis.
-Carefully scrutinize Junior Counsel's findings against the record.
-Identify any FATAL EVIDENTIARY LOOPHOLES, statutory bars, mandatory procedures, or critical legal grounds under Indian Law ({branch}) that Junior Counsel missed, understated, or misapplied.
-
-CASE DOSSIER / RECORD:
-{trimmed[:7000]}
-
-JUNIOR COUNSEL'S INITIAL ANALYSIS:
-{full_qwen_text[:5000]}
-
-USER'S INQUIRY:
-{user_instruction if user_instruction else "Find all weaknesses and formulate defense strategy"}
-
-CRITICAL INSTRUCTIONS:
-- If Junior Counsel covered all fatal grounds properly, output: "✅ **Junior Counsel's findings are legally sound and sufficient; no critical statutory loopholes were overlooked.**"
-- If critical loopholes, unaddressed statutory non-compliances, or key trial defenses were missed, list them in pointed bullets with exact statutory provisions, landmark case ratios, and practical courtroom execution.
-- Be concise, razor-sharp, and direct. No boilerplate disclaimers."""
-
-            audit_tokens: list[str] = []
-            async for chunk in self._call_gemini_stream(
-                prompt=senior_counsel_prompt,
-                system_instruction="You are an elite Senior Supreme Court of India Advocate conducting a rigorous loophole audit.",
-                model="gemini-2.5-flash",
-            ):
-                if not audit_tokens:
-                    yield "\n\n---\n### 🏛️ Senior Counsel Review & Loophole Audit (Gemini Chamber)\n\n"
-                audit_tokens.append(chunk)
-                yield chunk
