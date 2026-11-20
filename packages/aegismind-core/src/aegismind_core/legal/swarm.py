@@ -166,7 +166,7 @@ class LegalSwarmOrchestrator:
         self,
         system_prompt: str,
         user_prompt: str,
-        max_tokens: int = 2500,
+        max_tokens: int = 5000,
         model: str = "qwen3.5:9b",
     ) -> AsyncIterator[str]:
         """Stream response tokens from Ollama with zero thinking overhead and GPU acceleration."""
@@ -219,7 +219,7 @@ class LegalSwarmOrchestrator:
         ):
             yield chunk
 
-    async def _call_llm(self, system_prompt: str, user_prompt: str, max_tokens: int = 2500, model: str = "qwen3.5:9b") -> str:
+    async def _call_llm(self, system_prompt: str, user_prompt: str, max_tokens: int = 5000, model: str = "qwen3.5:9b") -> str:
         """Call Ollama with zero thinking overhead and GPU acceleration."""
         formatted_prompt = (
             f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
@@ -378,7 +378,7 @@ CASE DOSSIER / PLEADING TEXT:
 {text[:6500]}"""
 
         try:
-            raw_output = await self._call_llm(system_instruction, user_prompt, max_tokens=1800)
+            raw_output = await self._call_llm(system_instruction, user_prompt, max_tokens=5000)
             log.warning("RAW MODEL OUTPUT (first 400): %r", raw_output[:400])
             return _robust_json_parse(raw_output)
         except Exception as exc:
@@ -587,7 +587,7 @@ STRICT EXTRACTIVE RULE: You are strictly an extractive summarizer. You may ONLY 
         async for chunk in self._call_llm_stream(
             system_prompt=strict_local_system,
             user_prompt=user_prompt,
-            max_tokens=2500,
+            max_tokens=5000,
             model=model or "qwen3.5:9b",
         ):
             yield chunk

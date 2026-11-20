@@ -114,6 +114,8 @@ class OllamaAdapter:
             payload["system"] = system_prompt
         if max_tokens is not None:
             options["num_predict"] = max_tokens
+        else:
+            options["num_predict"] = int(os.environ.get("OLLAMA_NUM_PREDICT", "5000"))
         if temperature is not None:
             options["temperature"] = temperature
         num_gpu_env = os.environ.get("OLLAMA_NUM_GPU", "26")
@@ -182,6 +184,8 @@ class OllamaAdapter:
             payload["system"] = system_prompt
         if max_tokens is not None:
             options["num_predict"] = max_tokens
+        else:
+            options["num_predict"] = int(os.environ.get("OLLAMA_NUM_PREDICT", "5000"))
         if temperature is not None:
             options["temperature"] = temperature
         num_gpu_env = os.environ.get("OLLAMA_NUM_GPU", "26")
