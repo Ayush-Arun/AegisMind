@@ -366,6 +366,11 @@ export function Chat({
       } catch {
         // proceed
       }
+    } else if (!activeDocContext && (rawQuery.length > 60 || parsed.isCase)) {
+      // User entered or pasted raw case facts / legal text directly
+      setActiveDocContext(rawQuery);
+      const title = parsed.isCase && parsed.caseTitle ? parsed.caseTitle : (rawQuery.length > 32 ? rawQuery.slice(0, 32) + "..." : "Pasted Case Brief");
+      setActiveDocName(title);
     }
 
     let accumulatedResponse = "";
