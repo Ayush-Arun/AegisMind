@@ -130,6 +130,8 @@ export function Chat({
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [inputQuery, setInputQuery] = React.useState("");
   const [attachedFiles, setAttachedFiles] = React.useState<AttachedFile[]>([]);
+  const [activeDocContext, setActiveDocContext] = React.useState<string>("");
+  const [activeDocName, setActiveDocName] = React.useState<string>("");
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [currentThinking, setCurrentThinking] = React.useState<string | null>(null);
   const [convId] = React.useState<string>(() => `chat-${Date.now()}`);
@@ -348,7 +350,10 @@ export function Chat({
               setCurrentThinking(`Reading attached document: ${att.name}...`);
               const res = await parseFile(att.file);
               if (res.content) {
-                textSnippets.push(`--- Attached File: ${att.name} ---\n${res.content.slice(0, 120000)}`);
+                const snippet = `--- Attached File: ${att.name} ---\n${res.content.slice(0, 120000)}`;
+                textSnippets.push(snippet);
+                setActiveDocContext(snippet);
+                setActiveDocName(att.name);
               }
             } catch {
               // fallback
@@ -370,6 +375,11 @@ export function Chat({
       tenant_id: currentTenantId,
       user_id: currentUserId,
       model: selectedModel || "qwen3.5:9b",
+      active_document: activeDocContext || undefined,
+      chat_history: messages
+        .filter((m) => m.content.trim() && m.id !== assistantMsgId && m.id !== userMsgId)
+        .slice(-6)
+        .map((m) => ({ role: m.role, content: m.content })),
 
       onThinking: (status) => {
         setCurrentThinking(status.replace(/^•••\s*/, ""));
@@ -628,6 +638,25 @@ export function Chat({
 
           {/* Input Box Container */}
           <div className="bg-[#14151c] border border-[#242530] rounded-xl p-3 shadow-2xl flex flex-col gap-2 transition-all focus-within:border-white/20">
+            {/* Active Document Memory Indicator */}
+            {activeDocName && (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 w-fit rounded-md bg-[#191a24] border border-[#262838] text-[11px] text-white/80">
+                <FileText className="h-3 w-3 text-emerald-400 shrink-0" />
+                <span className="truncate max-w-[280px]">Active Case Context: <strong className="text-white font-medium">{activeDocName}</strong></span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveDocContext("");
+                    setActiveDocName("");
+                  }}
+                  className="ml-1 p-0.5 rounded hover:bg-white/10 text-white/40 hover:text-white transition-colors"
+                  title="Clear active case context"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            )}
+
             {/* Multiline Draft Textarea (max 3 lines with scrollbar) */}
             <textarea
               ref={textareaRef}

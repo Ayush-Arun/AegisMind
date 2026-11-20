@@ -489,6 +489,7 @@ CASE DOSSIER / PLEADING TEXT:
         branch: str = "Criminal Law",
         forum: str = "Trial Court / High Court",
         model: str = "qwen3.5:9b",
+        chat_history: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[str]:
         """Stream real-time legal response tokens from GPU with zero thinking overhead."""
         trimmed = case_text.strip()
@@ -537,6 +538,24 @@ GUIDELINES:
 1. Ground every finding in the provided record. Quote key lines, dates, amounts, and provisions.
 2. Structure your response with bold Markdown headings.
 3. Be sharp, aggressive, practical, and direct. No citation popup metadata, no boilerplate disclaimers, no filler."""
+
+        # Format conversational memory context if prior turns exist
+        conversation_context_block = ""
+        if chat_history:
+            history_lines = []
+            for turn in chat_history[-6:]:
+                role = turn.get("role", "user").capitalize()
+                content = str(turn.get("content", "")).strip()
+                if "--- attached file:" in content.lower():
+                    content = content.split("--- Attached File:")[0].strip() or "[Attached case file]"
+                if content:
+                    history_lines.append(f"{role}: {content[:600]}")
+            if history_lines:
+                conversation_context_block = (
+                    "### PRIOR CONVERSATION HISTORY IN THIS CHAT SESSION:\n"
+                    + "\n".join(history_lines)
+                    + "\n\n"
+                )
 
         # Query Chamber Reference Library (205 indexed Supreme Court PDFs in data/raw)
         ref_query = f"{branch} {user_instruction} {trimmed[:300]}"
@@ -604,6 +623,7 @@ Be terse, powerful, and courtroom-ready. Maximum signal, zero bloat."""
 
             full_prompt = (
                 f"{instruction_focus}\n\n"
+                f"{conversation_context_block}"
                 f"{precedent_reference_block}\n\n"
                 f"CLIENT CASE RECORD / DOCUMENT TEXT:\n{trimmed[:120000]}"
             )
@@ -623,7 +643,7 @@ Be terse, powerful, and courtroom-ready. Maximum signal, zero bloat."""
             log.warning("Gemini API yielded 0 tokens; falling back to local model on RTX 4050.")
 
         # Fallback: Local Qwen 3.5 on RTX 4050 with strict extractive rules (No hallucinations)
-        user_prompt = f"{precedent_reference_block}\n\nCLIENT CASE RECORD / PLEADINGS:\n{trimmed[:7500]}"
+        user_prompt = f"{conversation_context_block}{precedent_reference_block}\n\nCLIENT CASE RECORD / PLEADINGS:\n{trimmed[:7500]}"
         strict_local_system = f"""{system_instruction}
 PRIORITY: HIGH DENSITY & QUALITY OVER LENGTH.
 STRICT EXTRACTIVE RULE: You are strictly an extractive legal analyst. You may ONLY cite facts, sections, and statements explicitly present in the provided text. You are strictly forbidden from inventing outside case laws, fake citations, or generic textbook definitions. Use the 5-part Chamber Opinion structure."""

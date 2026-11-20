@@ -172,6 +172,12 @@ class ChatStreamRequest(BaseModel):
     private_mode: bool = Field(
         default=False, description="If true, skip memory retrieval and extraction"
     )
+    active_document: str | None = Field(
+        default=None, description="Active case document / PDF text for this chat session"
+    )
+    chat_history: list[dict[str, Any]] | None = Field(
+        default=None, description="Recent conversation turns in this chat thread"
+    )
 
 
 class GroupAliasRequest(BaseModel):
@@ -594,6 +600,8 @@ def create_routes(state: CoreState) -> APIRouter:
         sources: str | None = None,
         namespace: str = "global",
         private_mode: bool = False,
+        active_document: str | None = None,
+        chat_history: list[dict[str, Any]] | None = None,
     ) -> StreamingResponse:
         pipeline = state.retrieval_pipeline
         if pipeline is None:
@@ -639,7 +647,8 @@ def create_routes(state: CoreState) -> APIRouter:
             # Grounded Indian Legal Intelligence / Case Defense Audit
             q_lower = query.lower()
             is_legal_query = (
-                "--- attached file:" in q_lower
+                bool(active_document)
+                or "--- attached file:" in q_lower
                 or any(k in q_lower for k in [
                     "defend", "defense", "weak point", "weakness", "case file",
                     "fir", "chargesheet", "petition", "quash", "accused", "prosecution",
@@ -674,7 +683,7 @@ def create_routes(state: CoreState) -> APIRouter:
                     forum = m_forum.group(1).strip()
 
                 user_instruction = ""
-                doc_text = query
+                doc_text = active_document or query
 
                 if "--- attached file:" in q_lower:
                     parts = re.split(r"--- Attached File:\s*[^\n]+---", query, flags=re.I)
@@ -688,9 +697,12 @@ def create_routes(state: CoreState) -> APIRouter:
                             user_instruction = (parts[0].strip() + " " + user_instruction).strip()
 
                 if not user_instruction:
-                    lines = [l.strip() for l in query.split("\n") if l.strip()]
-                    if lines and len(lines[-1]) < 200 and not lines[-1].startswith(("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "CHARGES", "IN THE")):
-                        user_instruction = lines[-1]
+                    if active_document and active_document != query:
+                        user_instruction = query
+                    else:
+                        lines = [l.strip() for l in query.split("\n") if l.strip()]
+                        if lines and len(lines[-1]) < 200 and not lines[-1].startswith(("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "CHARGES", "IN THE")):
+                            user_instruction = lines[-1]
 
                 yield "event: thinking\ndata: Reading case record & extracting factual matrix...\n\n"
                 await asyncio.sleep(0.04)
@@ -710,6 +722,7 @@ def create_routes(state: CoreState) -> APIRouter:
                         branch=branch,
                         forum=forum,
                         model=effective_model,
+                        chat_history=chat_history,
                     ):
                         yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
                 except Exception as exc:
@@ -962,6 +975,8 @@ def create_routes(state: CoreState) -> APIRouter:
             sources=req.sources,
             namespace=req.namespace,
             private_mode=req.private_mode,
+            active_document=req.active_document,
+            chat_history=req.chat_history,
         )
 
     # 4. GET /api/v1/memory/stats: Memory statistics

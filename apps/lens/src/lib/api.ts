@@ -346,6 +346,8 @@ export function streamChat(params: {
   user_id: string;
   model?: string;
   sources?: string[];
+  active_document?: string;
+  chat_history?: Array<{ role: string; content: string }>;
   onToken: (token: string) => void;
   onThinking: (status: string) => void;
   onCitations: (citations: Citation[]) => void;
@@ -368,6 +370,8 @@ export function streamChat(params: {
           principal_id: params.user_id,
           model: params.model,
           sources: params.sources?.join(","),
+          active_document: params.active_document,
+          chat_history: params.chat_history,
         }),
         signal: controller.signal,
       });
