@@ -15,15 +15,48 @@ PRED_DB_PATH = STORAGE_LEGAL_DIR / "legal_db.sqlite"
 PRED_JSON_PATH = STORAGE_LEGAL_DIR / "precedents.json"
 
 
+import re
+
+LEGAL_STOPWORDS = {
+    "court", "supreme", "high", "criminal", "civil", "appeal", "matter",
+    "before", "legal", "client", "defense", "accused", "trial", "section",
+    "act", "versus", "state", "union", "india", "case", "file", "record",
+    "pleadings", "chargesheet", "petition", "order", "judgment", "counsel",
+    "advocate", "prosecution", "police", "bench"
+}
+
+
 def search_precedents(query: str, limit: int = 5) -> list[PrecedentItem]:
     """Retrieve the most relevant Indian Supreme Court precedents from the indexed database."""
     results: list[PrecedentItem] = []
     
-    # Clean query for FTS5 (take key alphanumeric terms)
-    terms = [re_term for re_term in query.split() if len(re_term) > 3 and re_term.isalnum()][:8]
-    if not terms:
-        terms = ["Court", "Appeal", "Section", "Evidence"]
-    fts_query = " OR ".join(terms)
+    # Extract clean alphanumeric tokens
+    raw_words = [w.strip() for w in re.split(r"[^\w\d]", query) if w.strip()]
+    priority_terms: list[str] = []
+    other_terms: list[str] = []
+
+    priority_keywords = {
+        "pocso", "ndps", "ganja", "narcotic", "cheque", "dishonour", "67b", "52a",
+        "quashing", "quash", "bail", "harish", "baldev", "mohanlal", "bhajan",
+        "khotkar", "specific", "performance", "arbitration", "contraband", "possession"
+    }
+
+    for w in raw_words:
+        wl = w.lower()
+        if wl in LEGAL_STOPWORDS or len(w) < 3:
+            continue
+        if wl in priority_keywords:
+            if w not in priority_terms:
+                priority_terms.append(w)
+        elif w not in other_terms:
+            other_terms.append(w)
+
+    # Use priority terms first; if none, fall back to other terms
+    active_terms = priority_terms or other_terms
+    if not active_terms:
+        active_terms = ["Section", "Evidence", "Offence"]
+
+    fts_query = " OR ".join(active_terms[:6])
 
     if PRED_DB_PATH.exists():
         try:

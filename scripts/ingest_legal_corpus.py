@@ -68,11 +68,14 @@ def extract_metadata_from_text(first_page_text: str, filename: str) -> dict[str,
     # Extract primary act mentions
     acts_found = []
     act_patterns = [
-        r"Negotiable Instruments Act",
-        r"Penal Code|Indian Penal Code|IPC|Bharatiya Nyaya Sanhita",
-        r"Code of Criminal Procedure|Cr\.?P\.?C|BNSS",
+        r"POCSO|Protection of Children from Sexual Offences",
+        r"NDPS|Narcotic Drugs and Psychotropic Substances",
+        r"Information Technology Act|IT Act|Section 67B",
+        r"Negotiable Instruments Act|Section 138",
+        r"Penal Code|Indian Penal Code|IPC|Bharatiya Nyaya Sanhita|BNS",
+        r"Code of Criminal Procedure|Cr\.?P\.?C|BNSS|Bharatiya Nagarik Suraksha",
         r"Code of Civil Procedure|C\.?P\.?C",
-        r"Evidence Act|Indian Evidence Act|BSA",
+        r"Evidence Act|Indian Evidence Act|BSA|Bharatiya Sakshya",
         r"Specific Relief Act",
         r"Arbitration and Conciliation Act",
         r"Constitution of India|Article \d+",
@@ -225,4 +228,4 @@ def ingest_corpus(max_files: int = 50) -> None:
 
 
 if __name__ == "__main__":
-    ingest_corpus(50)
+    ingest_corpus(300)

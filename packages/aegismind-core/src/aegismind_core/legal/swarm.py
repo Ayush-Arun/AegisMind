@@ -538,6 +538,20 @@ GUIDELINES:
 2. Structure your response with bold Markdown headings.
 3. Be sharp, aggressive, practical, and direct. No citation popup metadata, no boilerplate disclaimers, no filler."""
 
+        # Query Chamber Reference Library (205 indexed Supreme Court PDFs in data/raw)
+        ref_query = f"{branch} {user_instruction} {trimmed[:300]}"
+        ref_precedents = search_precedents(ref_query, limit=2)
+        precedent_reference_block = ""
+        if ref_precedents:
+            lines = []
+            for p in ref_precedents:
+                lines.append(f"- **{p.case_name}** ({p.citation}): {p.applicable_ratio}")
+            precedent_reference_block = (
+                "### VERIFIED SUPREME COURT PRECEDENTS FROM CHAMBER REFERENCE LIBRARY:\n"
+                "(USE STRICTLY FOR CITATION AND STATUTORY REFERENCE ONLY. DO NOT CONFUSE FACTS OF REFERENCE CASES WITH CLIENT RECORD)\n"
+                + "\n".join(lines)
+            )
+
         api_key = os.environ.get("GEMINI_API_KEY", "").strip()
 
         # OPTION A: Invert roles — Gemini 2.5 Flash is the Primary Legal Brain
@@ -550,9 +564,10 @@ Analyze the provided record with absolute statutory accuracy under Indian Law (B
 CORE QUALITY STANDARDS:
 1. BOTTOM LINE UP FRONT: Open immediately with the single decisive legal ratio or fatal statutory defect that wins or destroys the case. Zero warm-up filler or introductory throat-clearing.
 2. BAN TEXTBOOK DEFINITIONS: Never recite generic statutory definitions (e.g., "Abetment means...", "FIR is an information..."). Every sentence must tie an exact fact from the record directly to a statutory violation or legal consequence.
-3. PRECEDENT ECONOMY (MAX 2): Cite ONLY the 1 or 2 most authoritative binding Supreme Court Constitution/3-Judge Bench precedents that directly control the exact point, with their 1-sentence ratio. Never dump lists of marginal or fabricated citations.
+3. PRECEDENT ECONOMY (MAX 2): Cite ONLY the 1 or 2 most authoritative binding Supreme Court Constitution/3-Judge Bench precedents that directly control the exact point, with their 1-sentence ratio. Leverage the Chamber Reference Library provided below where applicable.
 4. TACTICAL COURTROOM EXECUTION: State the exact statutory application/petition to file with specific section numbers (e.g., Section 250 BNSS / Section 227 CrPC for Discharge, or Section 528 BNSS / Section 482 CrPC for Quashing).
 5. 3 LETHAL CROSS-EXAMINATION TRAPS: Provide 3 closed-ended, fact-specific trap questions that pin the opposing witness/IO down without room to fabricate an excuse.
+6. REFERENCE LIBRARY DISCIPLINE: Treat the Chamber Reference Library cases strictly as external legal authorities. Do not mix their facts with the client's case record.
 {specialized_rules}
 
 IF THE RECORD IS A COURT JUDGMENT / RULING (e.g. Supreme Court or High Court):
@@ -587,7 +602,11 @@ Structure as:
 
 Be terse, powerful, and courtroom-ready. Maximum signal, zero bloat."""
 
-            full_prompt = f"{instruction_focus}\n\nCASE RECORD / DOCUMENT TEXT:\n{trimmed[:120000]}"
+            full_prompt = (
+                f"{instruction_focus}\n\n"
+                f"{precedent_reference_block}\n\n"
+                f"CLIENT CASE RECORD / DOCUMENT TEXT:\n{trimmed[:120000]}"
+            )
 
             streamed_tokens = 0
             async for chunk in self._call_gemini_stream(
@@ -604,7 +623,7 @@ Be terse, powerful, and courtroom-ready. Maximum signal, zero bloat."""
             log.warning("Gemini API yielded 0 tokens; falling back to local model on RTX 4050.")
 
         # Fallback: Local Qwen 3.5 on RTX 4050 with strict extractive rules (No hallucinations)
-        user_prompt = f"CASE RECORD / PLEADINGS:\n{trimmed[:7500]}"
+        user_prompt = f"{precedent_reference_block}\n\nCLIENT CASE RECORD / PLEADINGS:\n{trimmed[:7500]}"
         strict_local_system = f"""{system_instruction}
 PRIORITY: HIGH DENSITY & QUALITY OVER LENGTH.
 STRICT EXTRACTIVE RULE: You are strictly an extractive legal analyst. You may ONLY cite facts, sections, and statements explicitly present in the provided text. You are strictly forbidden from inventing outside case laws, fake citations, or generic textbook definitions. Use the 5-part Chamber Opinion structure."""
